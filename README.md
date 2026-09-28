@@ -3,7 +3,8 @@
 Two SO-101 arms learning to rally on a table, trained in simulation and
 transferred to hardware.
 
-Status: **phase 1, step 1** - an SO-101 in MuJoCo that goes where it is told.
+Status: **phase 1, step 2** - an SO-101 in MuJoCo that goes where it is told,
+on a table, with a ball that bounces on it.
 
 ## Setup
 
@@ -32,6 +33,7 @@ Two ways. **Rendering to video needs nothing special:**
 
 ```bash
 .venv/bin/python scripts/render.py        # writes out/demo.mp4
+.venv/bin/python scripts/render_rally.py  # writes out/rally.mp4 - a launched ball
 open out/demo.mp4
 ```
 
@@ -80,9 +82,39 @@ command at 50 Hz, matching the rate we expect from the real servo bus.
 
 ```
 sim/arm.py          the Arm wrapper - load, command, step, read tip pose
-sim/models/so101/   vendored MJCF and meshes
+sim/config.py       every physical number: table, ball, launcher ranges
+sim/table.py        the table, added to the spec at load time
+sim/ball.py         the ball, its quadratic drag, and the scripted feeder
+sim/env.py          PingPongEnv = Arm + table + ball, drag applied each step
+sim/reach.py        how much of its half the arm can actually reach
+sim/models/so101/   vendored MJCF and meshes - never edited, see below
 scripts/goto.py     command one joint-space target
 scripts/demo.py     cycle waypoints in the live viewer
 scripts/render.py   render waypoints to out/demo.mp4, no window needed
+scripts/render_rally.py  render a launched ball to out/rally.mp4
+scripts/reach.py    print the reachable footprint over the arm's half
 tests/test_arm.py   it reaches what it is told, and respects its limits
+tests/test_ball.py  it falls, bounces to spec, and is slowed by air
 ```
+
+The vendored model is never edited. Everything this project adds to the world -
+the table, the ball, the finer timestep - goes through the `modify` hook on
+`Arm`, which is handed the `MjSpec` before compile.
+
+## The world
+
+Table top is `z = 0`, the floor is at `z = -0.900`. The arm's base is at the
+origin, bolted to the middle of its short edge, and owns `x in [0, 0.628]`.
+`+x` is the direction of play. All of it lives in `sim/config.py`.
+
+The ball is a 40 mm, 2.7 g sphere with quadratic drag applied by us each step,
+`F = -0.5*rho*Cd*A*|v|*v` with `Cd = 0.47`; MuJoCo's own fluid model is the
+wrong regime. There is no spin in v1, so no Magnus force.
+
+Two numbers worth knowing before designing a task around this:
+
+- **The arm reaches about 67% of its half**, out to `x = 0.48` of `0.628` m.
+  Run `scripts/reach.py` to see the footprint.
+- **The environment integrates at 2 kHz**, not the model's 200 Hz. A 2.7 g ball
+  on a stiff contact needs it; at 200 Hz the solver injects energy and the ball
+  leaves the room.

@@ -11,6 +11,7 @@ the gripper is held at a constant position and never commanded.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import mujoco
@@ -46,14 +47,20 @@ class Arm:
         scene: Path | str = SCENE,
         gripper_hold: float = 0.0,
         offscreen: tuple[int, int] | None = None,
+        modify: Callable[[mujoco.MjSpec], None] | None = None,
     ):
-        if offscreen is None:
+        """`modify` is the one hook for changing the model: it is handed the
+        spec before compile, so the vendored MJCF never has to be edited. That
+        is how the table and the ball get into the world."""
+        if offscreen is None and modify is None:
             self.model = mujoco.MjModel.from_xml_path(str(scene))
         else:
-            # Raise the offscreen framebuffer for video rendering, without
-            # editing the vendored model files.
             spec = mujoco.MjSpec.from_file(str(scene))
-            spec.visual.global_.offwidth, spec.visual.global_.offheight = offscreen
+            if offscreen is not None:
+                # Raise the offscreen framebuffer for video rendering.
+                spec.visual.global_.offwidth, spec.visual.global_.offheight = offscreen
+            if modify is not None:
+                modify(spec)
             self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
         self.gripper_hold = float(gripper_hold)
