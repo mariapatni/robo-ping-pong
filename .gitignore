@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .DS_Store
 out/
+# ...except the CAD artefacts, which are deliverables: sim/paddle.py and its
+# tests read cad/out/paddle_props.json, and nobody should need a CAD stack
+# installed to run the simulator or to send the paddle to a printer.
+!cad/out/
+MUJOCO_LOG.TXT

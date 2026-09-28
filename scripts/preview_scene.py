@@ -22,8 +22,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sim.arm import ARM_JOINTS, MODEL_DIR, SCENE  # noqa: E402
 from sim.ball import add_ball, drag_force  # noqa: E402
+from sim.cameras import add_cameras  # noqa: E402
 from sim.config import EnvConfig  # noqa: E402
-from sim.table import add_table  # noqa: E402
+from sim.table import add_corner_markers, add_net, add_table  # noqa: E402
 
 # Take physical numbers from the shared config so this preview tracks the real
 # environment: measured table (31.5 x 49.5 in of waxed wood) and the 2 kHz step
@@ -68,7 +69,10 @@ def build(offscreen):
     frame.quat = [0.0, 0.0, 0.0, 1.0]  # 180 deg about z
     spec.attach(mujoco.MjSpec.from_file(str(MODEL_DIR / "so101.xml")), prefix="b_", frame=frame)
 
-    add_table(spec, TABLE)
+    add_table(spec, TABLE, CFG.surface)
+    add_corner_markers(spec, TABLE, CFG.markers)
+    add_net(spec, TABLE, CFG.net)
+    add_cameras(spec, TABLE, CFG.cameras)
     add_ball(spec, BALL, pos=(TABLE.length * 0.75, 0.0, 0.3))
 
     # Translucent markers showing where feeds get spawned from, and the target

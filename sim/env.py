@@ -12,8 +12,9 @@ import numpy as np
 
 from .arm import SCENE, Arm
 from .ball import BALL_BODY, Launch, add_ball, drag_force, sample_launch
+from .cameras import add_cameras
 from .config import EnvConfig
-from .table import add_table
+from .table import add_corner_markers, add_net, add_table
 
 
 class PingPongEnv(Arm):
@@ -39,7 +40,10 @@ class PingPongEnv(Arm):
 
     def _build(self, spec: mujoco.MjSpec) -> None:
         spec.option.timestep = self.cfg.timestep
-        add_table(spec, self.cfg.table)
+        add_table(spec, self.cfg.table, self.cfg.surface)
+        add_corner_markers(spec, self.cfg.table, self.cfg.markers)
+        add_net(spec, self.cfg.table, self.cfg.net)
+        add_cameras(spec, self.cfg.table, self.cfg.cameras)
         add_ball(spec, self.cfg.ball, pos=self.park_pos)
 
     # -- ball state -----------------------------------------------------------

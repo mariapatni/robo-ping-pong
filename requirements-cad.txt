@@ -1,0 +1,6 @@
+# Only needed to REGENERATE the paddle from cad/paddle.py. The simulator and its
+# tests read the committed STL and JSON and do not import any of this, which is
+# why it is not in requirements.txt: build123d pulls in ~400 MB of OpenCascade.
+#
+#   uv pip install --python .venv/bin/python -r requirements-cad.txt
+build123d>=0.9
