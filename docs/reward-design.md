@@ -666,7 +666,7 @@ target data"; 2511.11218 — an 87-D actor observation against a 98-D privileged
 critic observation carrying "preemptive knowledge (next two hit times, target
 pose, remaining targets)."
 
-### Actor observation (27 floats, plus history)
+### Actor observation (31 floats, plus history)
 
 Everything here must be computable on hardware from cameras and servo telemetry.
 

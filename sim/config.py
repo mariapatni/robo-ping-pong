@@ -182,7 +182,17 @@ class MarkerConfig:
     enabled: bool = True
     radius: float = 0.030
     thickness: float = 0.0015
-    inset: float = 0.035  # from each edge, so the whole disc is on the table
+    inset: float = 0.045  # from each edge, so the whole marker is on the table
+
+    # STag fiducials, not plain discs. STag refines its homography against an
+    # inner circular border, which is what makes its pose steadier than a
+    # square-only marker - and every millimetre of error in the table frame
+    # lands directly in the ball position the policy sees.
+    fiducial: bool = True
+    hd: int = 21  # 12 markers, maximum error correction; we need four
+    ids: tuple[int, int, int, int] = (0, 1, 2, 3)
+    size: float = 0.070  # printed edge length, metres
+    texture_px: int = 256
 
     # Near-left, near-right, far-right, far-left, going round the table.
     # Distinct hues, and distinct in greyscale too: the OV9281 is monochrome.

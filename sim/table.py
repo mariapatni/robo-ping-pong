@@ -20,6 +20,7 @@ from .config import MarkerConfig, NetConfig, SurfaceConfig, TableConfig
 TABLE_GEOM = "table"
 WOOD_TEXTURE = "table_wood"
 WOOD_MATERIAL = "table_wood"
+STAG_PREFIX = "stag"
 MARKER_GEOMS = ("marker_near_left", "marker_near_right", "marker_far_right", "marker_far_left")
 NET_GEOM = "net"
 NET_POST_GEOMS = ("net_post_left", "net_post_right")
@@ -154,24 +155,73 @@ def corner_positions(cfg: TableConfig, markers: MarkerConfig) -> list[tuple[floa
     return [(x0, y, z), (x0, -y, z), (x1, -y, z), (x1, y, z)]
 
 
+def add_stag_material(spec: mujoco.MjSpec, marker_id: int, cfg: MarkerConfig) -> str:
+    """Register one rendered STag marker as a texture + material.
+
+    Handed to the spec as raw bytes, like the wood grain, so there is no PNG on
+    disk to drift out of step with the config.
+    """
+    from .fiducials import marker as render_marker
+
+    name = f"{STAG_PREFIX}_{cfg.hd}_{marker_id}"
+    img = render_marker(marker_id, hd=cfg.hd, size=cfg.texture_px)
+    rgb = np.repeat(img[:, :, None], 3, axis=2)
+
+    tex = spec.add_texture()
+    tex.name = name
+    tex.type = mujoco.mjtTexture.mjTEXTURE_2D
+    tex.height, tex.width, tex.nchannel = rgb.shape[0], rgb.shape[1], 3
+    tex.data = rgb.tobytes()
+
+    mat = spec.add_material()
+    mat.name = name
+    mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = name
+    mat.texrepeat = [1.0, 1.0]
+    mat.texuniform = False
+    mat.specular = 0.0
+    mat.shininess = 0.0
+    mat.reflectance = 0.0
+    return name
+
+
 def add_corner_markers(
     spec: mujoco.MjSpec, cfg: TableConfig, markers: MarkerConfig | None = None
 ) -> mujoco.MjSpec:
-    """Four coloured discs at the corners: the bounds of play, and the stand-in
-    for the calibration fiducials on the real island. Non-colliding."""
+    """Four fiducials at the corners: the bounds of play, and the thing the
+    real cameras will solve the table frame from. Non-colliding.
+
+    With `fiducial` on these are real STag markers, each a distinct id from the
+    HD21 library, so a camera that can only see three corners still knows which
+    three. With it off they fall back to coloured discs, which is useful when a
+    test wants the corners visible but does not want to pay to render them.
+    """
     markers = markers or MarkerConfig()
     if not markers.enabled:
         return spec
-    for name, pos, rgba in zip(MARKER_GEOMS, corner_positions(cfg, markers), markers.rgba):
-        spec.worldbody.add_geom(
+
+    positions = corner_positions(cfg, markers)
+    if not markers.fiducial:
+        for name, pos, rgba in zip(MARKER_GEOMS, positions, markers.rgba):
+            spec.worldbody.add_geom(
+                name=name, type=mujoco.mjtGeom.mjGEOM_CYLINDER, pos=list(pos),
+                size=[markers.radius, markers.thickness, 0.0], rgba=list(rgba),
+                contype=0, conaffinity=0,
+            )
+        return spec
+
+    half = 0.5 * markers.size
+    for name, pos, marker_id in zip(MARKER_GEOMS, positions, markers.ids):
+        material = add_stag_material(spec, marker_id, markers)
+        geom = spec.worldbody.add_geom(
             name=name,
-            type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+            type=mujoco.mjtGeom.mjGEOM_BOX,
             pos=list(pos),
-            size=[markers.radius, markers.thickness, 0.0],
-            rgba=list(rgba),
+            size=[half, half, markers.thickness],
+            rgba=[1.0, 1.0, 1.0, 1.0],
             contype=0,
             conaffinity=0,
         )
+        geom.material = material
     return spec
 
 

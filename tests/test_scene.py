@@ -113,11 +113,25 @@ def test_four_markers_sit_at_the_four_corners(env):
     assert len(seen) == 4, "the four markers must be in four different corners"
 
 
-def test_markers_are_visually_distinct(env):
-    """They stand in for calibration fiducials, so a camera that sees only some
-    of them still has to know which ones - in colour and in greyscale, because
-    the candidate sensor is monochrome."""
-    rgb = np.array([env.model.geom_rgba[geom(env, n)][:3] for n in MARKER_GEOMS])
+def test_each_corner_carries_its_own_fiducial(env):
+    """A camera that sees only some corners must still know which ones.
+
+    With STag markers that identity lives in the encoded id, not in the colour,
+    so this checks the four geoms carry four different materials. The id itself
+    is round-tripped through the real detector in tests/test_fiducials.py.
+    """
+    mats = [env.model.geom_matid[geom(env, n)] for n in MARKER_GEOMS]
+    assert all(m >= 0 for m in mats), "fiducial markers must carry a material"
+    assert len(set(mats)) == 4, f"corners share materials: {mats}"
+
+
+def test_disc_markers_stay_distinct_in_greyscale():
+    """The fallback path still has to work: with fiducials off the corners are
+    plain discs, and the candidate sensor is monochrome, so they have to differ
+    in luma and not only in hue."""
+    cfg = EnvConfig(markers=MarkerConfig(fiducial=False))
+    world = PingPongEnv(cfg=cfg)
+    rgb = np.array([world.model.geom_rgba[geom(world, n)][:3] for n in MARKER_GEOMS])
     grey = rgb @ np.array([0.299, 0.587, 0.114])
     for i in range(4):
         for j in range(i + 1, 4):
