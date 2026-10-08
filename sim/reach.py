@@ -94,3 +94,90 @@ def reach_map(
         max_x=float(good[:, 0].max()) if good.size else 0.0,
         band=band,
     )
+
+
+# -- orientation-conditioned reach --------------------------------------------
+#
+# reach_map answers "can the paddle centre be put here", which is a ceiling, not
+# a promise: it ignores which way the face points. A legal underhand return
+# needs the face open upward and pointing across the table, and the arm has five
+# joints, so once a 3D position is fixed only two degrees of freedom remain for
+# orientation. These functions measure the set of cells the arm can reach AND
+# hit from, which is the set the reward can actually be earned in.
+
+UNDERHAND_MAX_TILT_DEG = 60.0  # face within this angle of straight up
+
+
+def reach_map_oriented(
+    arm,
+    table: TableConfig | None = None,
+    band: tuple[float, float] = STRIKE_BAND,
+    samples: tuple[int, int, int, int, int] = (33, 17, 17, 15, 11),
+    cell: float = 0.02,
+    site: int | None = None,
+    max_tilt_deg: float = UNDERHAND_MAX_TILT_DEG,
+    require_forward: bool = True,
+) -> tuple[ReachMap, ReachMap]:
+    """Reach with and without the underhand orientation constraint.
+
+    Returns (unconstrained, constrained) over the same joint samples, so the two
+    are directly comparable - the drop between them is the number of interest.
+
+    The underhand cone: the outward face normal must lie within `max_tilt_deg`
+    of straight up, and (with `require_forward`) have a positive component
+    across the table, so the ball is sent toward the opponent rather than back
+    over the arm's own shoulder.
+
+    wrist_roll gets many more samples here than in reach_map, because it is the
+    joint that rotates the face and barely matters when orientation is ignored.
+    """
+    table = table or TableConfig()
+    site = arm.tip_site if site is None else site
+
+    grids = [np.linspace(lo, hi, n) for lo, hi, n in zip(arm.lower, arm.upper, samples)]
+    mesh = np.stack(np.meshgrid(*grids, indexing="ij"), axis=-1).reshape(-1, len(ARM_JOINTS))
+
+    data = mujoco.MjData(arm.model)
+    pos = np.empty((mesh.shape[0], 3))
+    nrm = np.empty((mesh.shape[0], 3))
+    for i in range(mesh.shape[0]):
+        data.qpos[arm.qpos_adr] = mesh[i]
+        mujoco.mj_kinematics(arm.model, data)
+        pos[i] = data.site_xpos[site]
+        nrm[i] = data.site_xmat[site].reshape(3, 3)[:, 2]
+
+    cos_limit = np.cos(np.radians(max_tilt_deg))
+    ok_tilt = nrm[:, 2] >= cos_limit
+    ok_fwd = nrm[:, 0] > 0.0 if require_forward else np.ones(len(nrm), bool)
+    underhand = ok_tilt & ok_fwd
+
+    return (
+        _bin_to_map(pos, np.ones(len(pos), bool), table, band, cell),
+        _bin_to_map(pos, underhand, table, band, cell),
+    )
+
+
+def _bin_to_map(pos, keep_mask, table, band, cell) -> ReachMap:
+    """Bin reachable points onto the arm's half, as reach_map does."""
+    nx = max(1, int(round(table.half_length / cell)))
+    ny = max(1, int(round(table.width / cell)))
+    x_edges = np.linspace(0.0, table.half_length, nx + 1)
+    y_edges = np.linspace(-table.half_width, table.half_width, ny + 1)
+
+    keep = (
+        keep_mask
+        & (pos[:, 2] >= band[0])
+        & (pos[:, 2] <= band[1])
+        & (pos[:, 0] >= 0.0)
+        & (pos[:, 0] <= table.half_length)
+        & (np.abs(pos[:, 1]) <= table.half_width)
+    )
+    p = pos[keep]
+    grid = np.zeros((nx, ny), bool)
+    max_x = 0.0
+    if len(p):
+        ix = np.clip(np.digitize(p[:, 0], x_edges) - 1, 0, nx - 1)
+        iy = np.clip(np.digitize(p[:, 1], y_edges) - 1, 0, ny - 1)
+        grid[ix, iy] = True
+        max_x = float(p[:, 0].max())
+    return ReachMap(occupied=grid, x_edges=x_edges, y_edges=y_edges, max_x=max_x, band=band)
