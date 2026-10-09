@@ -34,11 +34,10 @@ class SweptReach:
     pos: np.ndarray  # (n, 3)
     underhand: np.ndarray  # (n,) bool
 
-    def shifted(self, base_x: float) -> np.ndarray:
-        """Face positions with the arm's base moved `base_x` along the table."""
-        out = self.pos.copy()
-        out[:, 0] += base_x
-        return out
+    # No shifting here any more. The arm base IS the world origin and the table
+    # carries its own `arm_inset`, so these poses are already in table
+    # coordinates. Comparing two arm placements means comparing two
+    # TableConfigs, not translating the points.
 
 
 def sweep_face(
@@ -72,7 +71,7 @@ def grid(table: TableConfig, cell: float = 0.02):
     nx = int(round(table.length / cell))
     ny = int(round(table.width / cell))
     return (
-        np.linspace(0.0, table.length, nx + 1),
+        np.linspace(table.x_near, table.x_far, nx + 1),
         np.linspace(-table.half_width, table.half_width, ny + 1),
     )
 
@@ -82,7 +81,7 @@ def occupancy(points: np.ndarray, table: TableConfig, cell: float = 0.02) -> np.
     xe, ye = grid(table, cell)
     occ = np.zeros((len(xe) - 1, len(ye) - 1), bool)
     keep = (
-        (points[:, 0] >= 0.0) & (points[:, 0] <= table.length)
+        (points[:, 0] >= table.x_near) & (points[:, 0] <= table.x_far)
         & (np.abs(points[:, 1]) <= table.half_width)
     )
     p = points[keep]
@@ -100,19 +99,19 @@ def mirror(occ: np.ndarray) -> np.ndarray:
     return occ[::-1, ::-1]
 
 
-def zones(arm, table: TableConfig, base_x: float = 0.0, cell: float = 0.02, swept=None):
+def zones(arm, table: TableConfig, cell: float = 0.02, swept=None):
     """Reach, underhand and target occupancy for arm A, plus arm B's underhand.
 
-    `base_x` slides arm A's base along the table; arm B moves symmetrically in
-    from the far end by the same amount.
+    Where the arm sits on the table is `table.arm_inset`; arm B is the same
+    zone rotated 180 degrees about the table centre.
     """
     swept = swept or sweep_face(arm)
-    pts = swept.shifted(base_x)
+    pts = swept.pos
     reach = occupancy(pts, table, cell)
     under = occupancy(pts[swept.underhand], table, cell)
     b_under = mirror(under)
 
     xe, _ = grid(table, cell)
-    past_net = (0.5 * (xe[:-1] + xe[1:]) > table.half_length)[:, None]
+    past_net = (0.5 * (xe[:-1] + xe[1:]) > table.x_net)[:, None]
     target = b_under & past_net
     return {"reach": reach, "underhand": under, "b_underhand": b_under, "target": target}

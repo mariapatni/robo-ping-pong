@@ -130,7 +130,7 @@ def landing_term(landing_xy, table, aim_xy=None, w: StrokeWeights | None = None)
     """
     w = w or StrokeWeights()
     x, y = float(landing_xy[0]), float(landing_xy[1])
-    on_table = (table.half_length <= x <= table.length) and (abs(y) <= table.half_width)
+    on_table = (table.x_net <= x <= table.x_far) and (abs(y) <= table.half_width)
     if not on_table:
         return 0.0, False
     r = w.in_bounds

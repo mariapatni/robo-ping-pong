@@ -120,7 +120,7 @@ def add_table(
 
     geom = spec.worldbody.add_geom(
         name=TABLE_GEOM,
-        pos=[cfg.half_length, 0.0, -0.5 * cfg.thickness],
+        pos=[cfg.x_near + cfg.half_length, 0.0, -0.5 * cfg.thickness],
         type=mujoco.mjtGeom.mjGEOM_BOX,
         size=[cfg.half_length, cfg.half_width, 0.5 * cfg.thickness],
         rgba=[1.0, 1.0, 1.0, 1.0] if surface.wood else list(surface.plain_rgba),
@@ -149,7 +149,7 @@ def corner_positions(cfg: TableConfig, markers: MarkerConfig) -> list[tuple[floa
     detectable.
     """
     d = markers.inset
-    x0, x1 = d, cfg.length - d
+    x0, x1 = cfg.x_near + d, cfg.x_far - d
     y = cfg.half_width - d
     z = markers.thickness
     return [(x0, y, z), (x0, -y, z), (x1, -y, z), (x1, y, z)]
@@ -244,7 +244,7 @@ def add_net(spec: mujoco.MjSpec, cfg: TableConfig, net: NetConfig | None = None)
     spec.worldbody.add_geom(
         name=NET_GEOM,
         type=mujoco.mjtGeom.mjGEOM_BOX,
-        pos=[cfg.half_length, 0.0, 0.5 * net.height],
+        pos=[cfg.x_net, 0.0, 0.5 * net.height],
         size=[0.5 * net.thickness, half_span, 0.5 * net.height],
         rgba=list(net.rgba),
         **kw,
@@ -253,7 +253,7 @@ def add_net(spec: mujoco.MjSpec, cfg: TableConfig, net: NetConfig | None = None)
         spec.worldbody.add_geom(
             name=name,
             type=mujoco.mjtGeom.mjGEOM_CYLINDER,
-            pos=[cfg.half_length, sign * half_span, 0.5 * net.height],
+            pos=[cfg.x_net, sign * half_span, 0.5 * net.height],
             size=[net.post_radius, 0.5 * net.height, 0.0],
             rgba=list(net.post_rgba),
             contype=0,

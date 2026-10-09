@@ -106,10 +106,10 @@ def test_four_markers_sit_at_the_four_corners(env):
         p = env.model.geom_pos[gid]
         assert np.allclose(p, pos)
         # On the table, clear of both edges by the inset, and never overhanging.
-        assert m.radius <= p[0] <= t.length - m.radius
+        assert t.x_near + m.radius <= p[0] <= t.x_far - m.radius
         assert abs(p[1]) <= t.half_width - m.radius
         assert p[2] > 0.0, "a marker below the surface is invisible to a camera"
-        seen.add((np.sign(p[0] - t.half_length), np.sign(p[1])))
+        seen.add((np.sign(p[0] - t.x_net), np.sign(p[1])))
     assert len(seen) == 4, "the four markers must be in four different corners"
 
 
@@ -168,7 +168,7 @@ def test_net_stands_on_the_centre_line(env):
     t, n = env.cfg.table, env.cfg.net
     gid = geom(env, NET_GEOM)
     pos, size = env.model.geom_pos[gid], env.model.geom_size[gid]
-    assert pos[0] == pytest.approx(t.half_length)
+    assert pos[0] == pytest.approx(t.x_net)
     assert pos[1] == pytest.approx(0.0)
     assert 2 * size[2] == pytest.approx(n.height)
     assert pos[2] - size[2] == pytest.approx(0.0), "the net must reach the surface"
@@ -195,9 +195,9 @@ def test_a_solid_net_actually_stops_a_ball():
     solid = PingPongEnv(cfg)
     solid.reset()
     # Fired at the net, below its top: it must not come out the other side.
-    solid.set_ball((cfg.table.half_length + 0.25, 0.0, 0.03), (-2.0, 0.0, 0.0))
+    solid.set_ball((cfg.table.x_net + 0.25, 0.0, 0.03), (-2.0, 0.0, 0.0))
     solid.step(int(0.6 / solid.model.opt.timestep))
-    assert solid.ball_pos()[0] > cfg.table.half_length, "the ball went through the net"
+    assert solid.ball_pos()[0] > cfg.table.x_net, "the ball went through the net"
 
 
 def crossing_heights(seeds=range(32)) -> np.ndarray:
@@ -207,7 +207,7 @@ def crossing_heights(seeds=range(32)) -> np.ndarray:
     made here rather than asserted from a comment.
     """
     env = PingPongEnv(replace(EnvConfig(), net=NetConfig(enabled=False)))
-    mid = env.cfg.table.half_length
+    mid = env.cfg.table.x_net
     out = []
     for seed in seeds:
         env.reset()
@@ -264,7 +264,7 @@ def test_camera_optics_come_from_the_lens_we_would_buy(env):
 def test_each_camera_is_behind_and_above_its_own_arm(env):
     t = env.cfg.table
     a, b = rig_poses(env.cfg.cameras, t)
-    assert a.pos[0] < 0.0 and b.pos[0] > t.length, "each camera sits behind its own arm"
+    assert a.pos[0] < 0.0 and b.pos[0] > t.x_far, "each camera sits behind its own arm"
     assert a.pos[2] > 0.3 and b.pos[2] > 0.3, "and above the table"
     assert a.forward[0] > 0.0 > b.forward[0], "each looks down the table at the other"
     assert a.forward[2] < 0.0 and b.forward[2] < 0.0, "angled downward"
@@ -276,7 +276,7 @@ def test_the_pair_sees_the_whole_table(env):
     t = env.cfg.table
     for cam in rig_poses(env.cfg.cameras, t):
         assert coverage(cam, t) > 0.995
-        for x in (0.0, t.length):
+        for x in (t.x_near, t.x_far):
             for y in (-t.half_width, t.half_width):
                 assert cam.in_frame(np.array([x, y, 0.0])), "a corner fell out of frame"
 
@@ -285,7 +285,7 @@ def test_the_ball_is_big_enough_to_centroid(env):
     t, r = env.cfg.table, env.cfg.ball.radius
     a, _ = rig_poses(env.cfg.cameras, t)
     # Worst case is the far corner of the far half.
-    far = np.array([t.length, -t.half_width, 0.0])
+    far = np.array([t.x_far, -t.half_width, 0.0])
     assert a.pixels_across(far, 2 * r) > 5.0
     assert a.pixels_across(np.array([0.3, 0.0, 0.1]), 2 * r) > 9.0
 

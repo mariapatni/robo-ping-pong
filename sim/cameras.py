@@ -117,7 +117,7 @@ def camera_pose(cfg: CameraConfig, table: TableConfig, side: str = "a") -> Pinho
     p = np.radians(cfg.pitch_deg)
     y = np.radians(cfg.yaw_deg)
     forward = np.array([s * np.cos(p) * np.cos(y), s * np.cos(p) * np.sin(y), -np.sin(p)])
-    base_x = 0.0 if side == "a" else table.length
+    base_x = 0.0 if side == "a" else table.x_far
     pos = np.array([base_x - s * cfg.back, s * cfg.lateral, cfg.height])
     return Pinhole(pos=pos, rot=_basis(forward), cfg=cfg, name=f"cam_{side}")
 
@@ -185,7 +185,7 @@ def coverage(cam: Pinhole, table: TableConfig, cell: float = 0.02) -> float:
     """
     nx = max(2, int(round(table.length / cell)))
     ny = max(2, int(round(table.width / cell)))
-    xs = np.linspace(0.0, table.length, nx)
+    xs = np.linspace(table.x_near, table.x_far, nx)
     ys = np.linspace(-table.half_width, table.half_width, ny)
     seen = 0
     for x in xs:

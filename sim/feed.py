@@ -77,8 +77,9 @@ def _closest(path, target, after=None):
 def aim_feed(
     target,
     ball,
-    spawn_x: float,
+    spawn_x,
     table_e: float = 0.88,
+    lateral_frac=(0.0, 0.75),
     spawn_z=(0.18, 0.55),
     arrival=(1.0, 1.9),
     speeds=(0.8, 4.0),
@@ -95,6 +96,16 @@ def aim_feed(
     target = np.asarray(target, float)
     rng = np.random.default_rng(seed)
 
+    # Randomise WHERE the ball is shot from, while the target keeps the arrival
+    # guaranteed. Varying the spawn matters because a fixed release point makes
+    # incoming direction a deterministic function of the strike point, and a
+    # policy can then infer where the ball is going from where it starts -
+    # a shortcut that evaporates when the opponent is a second arm standing
+    # somewhere else. Sampling the release breaks that correlation.
+    if not np.isscalar(spawn_x):
+        spawn_x = float(rng.uniform(*spawn_x))
+    lat = float(rng.uniform(*lateral_frac))
+
     # The spawn sits "behind" the target along the direction of play, offset
     # laterally so the ball arrives travelling across the table as well as down
     # it. Its height is part of the search: a higher release buys fall time,
@@ -110,7 +121,7 @@ def aim_feed(
         actually get. Penalising arrival speed buys the realistic solution,
         which is a higher, slower lob.
         """
-        here = np.array([spawn_x, target[1] * 0.35, sz])
+        here = np.array([spawn_x, target[1] * lat, sz])
         to_t = target - here
         az = np.arctan2(to_t[1], to_t[0])
         e = np.radians(elev_deg)

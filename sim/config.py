@@ -50,10 +50,32 @@ class TableConfig:
     contact_omega: float = 1000.0
     friction: tuple[float, float, float] = (0.25, 0.005, 0.0001)
 
+    # How far each arm's base sits ONTO the table from its own short edge.
+    # Measured: at the edge the arm covers 58.3% of its half underhand; at
+    # 0.15 m, 75.7%, reaching 0.658 m instead of 0.519 m. Past ~0.20 m it
+    # starts reaching over the net and coverage of its own half falls again.
+    # The arm base stays the world origin, so the table slides back instead:
+    # it spans x in [x_near, x_far] = [-arm_inset, length - arm_inset].
+    arm_inset: float = 0.15
+
     @property
     def half_length(self) -> float:
-        """Depth of one player's half. The arm owns x in [0, half_length]."""
+        """Depth of one player's half."""
         return 0.5 * self.length
+
+    @property
+    def x_near(self) -> float:
+        """The near short edge, behind the arm."""
+        return -self.arm_inset
+
+    @property
+    def x_far(self) -> float:
+        """The far short edge, where the opponent's base sits."""
+        return self.length - self.arm_inset
+
+    @property
+    def x_net(self) -> float:
+        return self.x_near + self.half_length
 
     @property
     def half_width(self) -> float:
@@ -296,7 +318,12 @@ class CameraConfig:
     # The yaw is negative because the lateral offset is positive: the camera
     # steps toward its own left corner and then looks back across the table,
     # which is what keeps the opposite near corner in frame.
-    back: float = 0.15
+    # Setback was 0.15 m while the arm stood at the table's edge. Moving the
+    # arm 0.15 m onto the table put the camera exactly ON the near edge, and it
+    # lost the strip behind itself: coverage fell to 0.964. It has to retreat
+    # by the same amount the arm advanced, plus margin. Measured: 0.22 m gives
+    # 0.996, 0.30 m gives 1.000.
+    back: float = 0.30
     height: float = 0.60
     lateral: float = 0.25
     pitch_deg: float = 50.0

@@ -19,6 +19,8 @@ import mujoco
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from dataclasses import replace  # noqa: E402
+
 from sim.config import EnvConfig, MarkerConfig, TableConfig  # noqa: E402
 from sim.env import PingPongEnv  # noqa: E402
 from sim.paddle import PaddleConfig  # noqa: E402
@@ -104,12 +106,13 @@ def main(argv=None) -> int:
     half_cells = int(round(table.half_length / CELL)) * int(round(table.width / CELL))
     rows = []
     for i, bx in enumerate((0.0, args.forward)):
-        z = zones(world, table, base_x=bx, cell=CELL, swept=swept)
-        own = z["underhand"][: int(round(table.half_length / CELL))]
+        tbl = replace(table, arm_inset=bx)
+        z = zones(world, tbl, cell=CELL, swept=swept)
+        own = z["underhand"][: int(round(tbl.half_length / CELL))]
         pct = own.sum() / half_cells * 100
         rows.append((bx, pct, z["target"].sum()))
         oy = MARGIN + 46 + i * (h + PANEL_GAP)
-        panel(img, (MARGIN, oy), table, z, bx,
+        panel(img, (MARGIN, oy), tbl, z, bx,
               f"Arm base at x = {bx:.2f} m" + ("  (as built)" if bx == 0 else "  (moved forward)"),
               f"underhand coverage of its own half: {pct:.1f}%")
 

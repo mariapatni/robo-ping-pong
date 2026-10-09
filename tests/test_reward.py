@@ -70,9 +70,9 @@ def test_face_up_but_chopping_down_is_not_underhand():
 
 def test_the_outcome_ordering_is_the_design():
     under_on = score(FACE_UP, RISING, AIM)["total"]
-    under_off = score(FACE_UP, RISING, (1.20, 0.30))["total"]
+    under_off = score(FACE_UP, RISING, (1.05, 0.30))["total"]
     over_in = score(FACE_DOWN, FALLING, AIM)["total"]
-    under_out = score(FACE_UP, RISING, (1.45, 0.0))["total"]
+    under_out = score(FACE_UP, RISING, (1.35, 0.0))["total"]
     rim = score(FACE_UP, RISING, AIM, contact_n=[0, 1, 0])["total"]
     miss = exchange_reward(table=TABLE)["total"]
 
@@ -99,7 +99,7 @@ def test_height_is_not_rewarded():
 
 
 def test_landing_short_of_the_net_is_out():
-    assert not score(FACE_UP, RISING, (0.40, 0.0))["in_bounds"]
+    assert not score(FACE_UP, RISING, (0.30, 0.0))["in_bounds"]
     assert score(FACE_UP, RISING, (0.95, 0.0))["in_bounds"]
 
 
@@ -111,5 +111,5 @@ def test_faults_are_never_negative():
     """Reward hack 9: a negative fault makes deliberate fouling an improvement."""
     for r in (exchange_reward(table=TABLE),
               score(FACE_UP, RISING, AIM, contact_n=[0, 1, 0]),
-              score(FACE_DOWN, FALLING, (1.45, 0.0))):
+              score(FACE_DOWN, FALLING, (1.35, 0.0))):
         assert r["total"] >= 0.0
