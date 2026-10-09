@@ -351,6 +351,8 @@ class EnvConfig:
     net: NetConfig = field(default_factory=NetConfig)
     cameras: CameraRig = field(default_factory=CameraRig)
 
+    paddle: object | None = None  # a PaddleConfig; None leaves the bare gripper
+
     # The vendored model integrates at 200 Hz, far too coarse to resolve a stiff
     # 2.7 g contact: at 200 Hz the bounce spans one step and the integrator
     # injects energy, sending the ball metres into the air. 2 kHz gives ~6 steps
