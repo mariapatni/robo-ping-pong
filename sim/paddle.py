@@ -262,7 +262,8 @@ def read_stl(path: Path = MESH_PATH) -> tuple[np.ndarray, np.ndarray]:
 # -- the spec edit ------------------------------------------------------------
 
 
-def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.MjSpec:
+def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
+               prefix: str = "") -> mujoco.MjSpec:
     """Bolt the paddle onto the wrist_roll link, rigidly.
 
     The visual is the CAD mesh; collision is a cylinder and a box, because a
@@ -274,15 +275,22 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.M
     cfg = cfg or PaddleConfig()
     pos, _ = cfg.frame
 
-    verts, faces = read_stl()
-    mesh = spec.add_mesh()
-    mesh.name = PADDLE_MESH
-    mesh.uservert = verts.reshape(-1).tolist()
-    mesh.userface = faces.reshape(-1).tolist()
-    mesh.scale = [1e-3, 1e-3, 1e-3]  # the CAD is in millimetres
+    # The mesh is an asset, not a body, so two arms share one copy. Adding it
+    # again under a second prefix is a duplicate-name error, and duplicating
+    # the geometry would be wasteful anyway.
+    if not any(m.name == PADDLE_MESH for m in spec.meshes):
+        verts, faces = read_stl()
+        mesh = spec.add_mesh()
+        mesh.name = PADDLE_MESH
+        mesh.uservert = verts.reshape(-1).tolist()
+        mesh.userface = faces.reshape(-1).tolist()
+        mesh.scale = [1e-3, 1e-3, 1e-3]  # the CAD is in millimetres
 
-    host = spec.body(HOST_BODY)
-    body = host.add_body(name=PADDLE_BODY, pos=pos.tolist(), quat=cfg.quat.tolist())
+    # `prefix` lets a second arm, attached under its own prefix, carry its own
+    # paddle: MjSpec.attach renames every body, so the host and the paddle's
+    # own names both have to be qualified.
+    host = spec.body(prefix + HOST_BODY)
+    body = host.add_body(name=prefix + PADDLE_BODY, pos=pos.tolist(), quat=cfg.quat.tolist())
     # No joint: MuJoCo welds it to the wrist_roll link, which is the whole point.
     body.explicitinertial = True
     body.mass = cfg.mass
@@ -290,7 +298,7 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.M
     body.fullinertia = list(cfg.fullinertia)
 
     body.add_geom(
-        name=f"{PADDLE_BODY}_visual",
+        name=prefix + f"{PADDLE_BODY}_visual",
         type=mujoco.mjtGeom.mjGEOM_MESH,
         meshname=PADDLE_MESH,
         mass=0.0,  # the body's explicit inertial owns all of it
@@ -302,7 +310,7 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.M
 
     # The rubber, drawn only. Its mass is already in the body's inertial.
     body.add_geom(
-        name=f"{PADDLE_BODY}_rubber",
+        name=prefix + f"{PADDLE_BODY}_rubber",
         type=mujoco.mjtGeom.mjGEOM_CYLINDER,
         pos=[cfg.blade_centre_x, 0.0, -0.5 * cfg.rubber_thickness],
         size=[cfg.rubber_radius, 0.5 * cfg.rubber_thickness, 0.0],
@@ -315,7 +323,7 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.M
 
     half = 0.5 * (cfg.blade_thickness + cfg.rubber_thickness)
     body.add_geom(
-        name=BLADE_GEOM,
+        name=prefix + BLADE_GEOM,
         type=mujoco.mjtGeom.mjGEOM_CYLINDER,
         pos=[cfg.blade_centre_x, 0.0, 0.5 * (cfg.blade_thickness - cfg.rubber_thickness)],
         size=[cfg.blade_radius, half, 0.0],
@@ -329,7 +337,7 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.M
     )
     x0, x1 = cfg.pad_x
     body.add_geom(
-        name=PAD_GEOM,
+        name=prefix + PAD_GEOM,
         type=mujoco.mjtGeom.mjGEOM_BOX,
         pos=[0.5 * (x0 + x1), 0.0, 0.5 * cfg.pad_thickness],
         size=[0.5 * (x1 - x0), 0.5 * cfg.pad_width, 0.5 * cfg.pad_thickness],
@@ -346,18 +354,18 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None) -> mujoco.M
     # z is the outward face normal - i.e. site_xmat[:, 2] is where the ball has to
     # come from - while its x still runs down the paddle towards the blade.
     body.add_site(
-        name=FACE_SITE,
+        name=prefix + FACE_SITE,
         pos=cfg.face_pos.tolist(),
         quat=[0.0, 1.0, 0.0, 0.0],
         group=3,
     )
 
     if cfg.remove_moving_jaw:
-        _retire_moving_jaw(spec)
+        _retire_moving_jaw(spec, prefix)
     return spec
 
 
-def _retire_moving_jaw(spec: mujoco.MjSpec) -> None:
+def _retire_moving_jaw(spec: mujoco.MjSpec, prefix: str = "") -> None:
     """Switch the moving jaw off without deleting it.
 
     On the hardware it is unbolted and set aside. Deleting the body here would
@@ -366,7 +374,7 @@ def _retire_moving_jaw(spec: mujoco.MjSpec) -> None:
     jaw stays, loses its collisions so it cannot foul the ball or the paddle, and
     goes translucent so a render does not imply it is still fitted.
     """
-    jaw = spec.body(MOVING_JAW_BODY)
+    jaw = spec.body(prefix + MOVING_JAW_BODY)
     if jaw is None:
         return
     for geom in jaw.geoms:
