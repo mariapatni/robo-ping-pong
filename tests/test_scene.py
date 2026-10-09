@@ -268,8 +268,19 @@ def test_each_camera_is_behind_and_above_its_own_arm(env):
     assert a.pos[2] > 0.3 and b.pos[2] > 0.3, "and above the table"
     assert a.forward[0] > 0.0 > b.forward[0], "each looks down the table at the other"
     assert a.forward[2] < 0.0 and b.forward[2] < 0.0, "angled downward"
-    # Opposite sides of the centre line: that is what makes the pair triangulate.
-    assert np.sign(a.pos[1]) == -np.sign(b.pos[1]) != 0
+    # This used to assert the cameras sat on opposite sides of the centre line,
+    # on the theory that the lateral offset was what made the pair triangulate.
+    # Measurement disagreed: a centred, square pair mounted higher and pitched
+    # steeper triangulates BETTER (1.7 mm against 2.2 mm). So test the property
+    # that matters rather than the arrangement that was assumed to cause it.
+    band = [np.array([x, y, z])
+            for x in np.linspace(t.x_near + 0.08, t.x_far - 0.08, 5)
+            for y in (-0.25, 0.0, 0.25)
+            for z in (0.06, 0.16)]
+    parallax = np.array([parallax_deg(a, b, p) for p in band])
+    sigma = np.array([max(triangulation_sigma([a, b], p, 0.5)) for p in band])
+    assert parallax.min() > 20.0, f"near-degenerate geometry: {parallax.min():.1f} deg"
+    assert np.median(sigma) < 0.004, f"position sigma {np.median(sigma)*1000:.1f} mm"
 
 
 def test_the_pair_sees_the_whole_table(env):

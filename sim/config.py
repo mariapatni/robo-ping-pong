@@ -318,16 +318,27 @@ class CameraConfig:
     # The yaw is negative because the lateral offset is positive: the camera
     # steps toward its own left corner and then looks back across the table,
     # which is what keeps the opposite near corner in frame.
-    # Setback was 0.15 m while the arm stood at the table's edge. Moving the
-    # arm 0.15 m onto the table put the camera exactly ON the near edge, and it
-    # lost the strip behind itself: coverage fell to 0.964. It has to retreat
-    # by the same amount the arm advanced, plus margin. Measured: 0.22 m gives
-    # 0.996, 0.30 m gives 1.000.
-    back: float = 0.30
-    height: float = 0.60
-    lateral: float = 0.25
-    pitch_deg: float = 50.0
-    yaw_deg: float = -10.0
+    # Centred behind its own arm, square to the table, mounted off the table's
+    # near edge. An earlier rig sat 0.30 m back, offset 0.25 m toward a corner
+    # and yawed 10 degrees, because a sweep found lateral offset was what kept
+    # the arm off its own sightline. That was true for the arm at the table
+    # edge; moving the arm 0.15 m forward invalidated it. Re-measured, centred
+    # and square now beats the offset rig on every axis at once:
+    #
+    #            coverage   parallax   position sigma   ball visible
+    #   offset      1.000      68.1d          2.2 mm          83.5%
+    #   centred     1.000      91.6d          1.7 mm          90.7%
+    #
+    # The reason is height and pitch, not symmetry: at 0.70 m looking 60
+    # degrees down, both cameras look steeply past their own arm rather than
+    # along the table at it, and their rays still meet the low-flying ball at a
+    # wide angle. The degenerate case is two LOW, LEVEL cameras staring at each
+    # other, which this is not.
+    back: float = 0.15  # i.e. right at the table's near edge, clampable
+    height: float = 0.70
+    lateral: float = 0.0
+    pitch_deg: float = 60.0
+    yaw_deg: float = 0.0
 
     focal_mm: float = 1.8
     sensor_mm: tuple[float, float] = (3.84, 2.40)
