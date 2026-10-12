@@ -146,3 +146,50 @@ def test_the_striking_face_is_the_one_that_pushed():
     up_v = np.array([1.4, 0.0, 0.6])
     assert striking_normal(FACE_UP, None, up_v)[2] > 0
     assert striking_normal(-FACE_UP, None, up_v)[2] > 0
+
+
+# -- hitting the table -------------------------------------------------------
+#
+# The policy's action space is joint targets clipped to joint limits and
+# nothing else: there is no whitelist of allowed poses, so the only thing that
+# can keep the paddle out of the table is the cost of putting it there.
+
+
+def test_clearing_the_table_costs_nothing():
+    clear = score(FACE_UP, RISING, AIM)
+    with_clear = exchange_reward(contact_normal=FACE_UP, face_normal=FACE_UP,
+                                 ball_vel_out=RISING, landing_xy=AIM, table=TABLE,
+                                 aim_xy=AIM, blade_lowest=0.02)
+    assert with_clear["total"] == pytest.approx(clear["total"])
+    assert with_clear["table_strike"] == 0.0
+
+
+def test_the_penalty_grows_with_depth():
+    def at(depth):
+        return exchange_reward(contact_normal=FACE_UP, face_normal=FACE_UP,
+                               ball_vel_out=RISING, landing_xy=AIM, table=TABLE,
+                               aim_xy=AIM, blade_lowest=depth)["table_strike"]
+    assert at(-0.002) < at(-0.010) < at(-0.040)
+
+
+def test_no_return_is_worth_a_deep_table_strike():
+    """The best possible return must not outscore staying clear and missing."""
+    perfect_but_gouging = exchange_reward(
+        contact_normal=FACE_UP, face_normal=FACE_UP, ball_vel_out=RISING,
+        landing_xy=AIM, table=TABLE, aim_xy=AIM, blade_lowest=-0.05)["total"]
+    clean_miss = exchange_reward(table=TABLE, blade_lowest=0.02)["total"]
+    assert perfect_but_gouging < clean_miss
+
+
+def test_the_table_penalty_is_not_capped_by_the_fault_floor():
+    """Faults floor at zero so fouling never pays, but a table strike has to be
+    able to go below it - otherwise flailing into the table is free."""
+    flail = exchange_reward(table=TABLE, blade_lowest=-0.05)["total"]
+    do_nothing = exchange_reward(table=TABLE, blade_lowest=0.02)["total"]
+    assert flail < do_nothing
+    assert flail < 0.0
+
+
+def test_an_unknown_blade_height_is_not_penalised():
+    """Callers that do not track the blade should not be silently fined."""
+    assert exchange_reward(table=TABLE)["table_strike"] == 0.0

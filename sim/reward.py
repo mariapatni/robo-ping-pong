@@ -71,6 +71,25 @@ class StrokeWeights:
     joint_velocity: float = 0.01
     action_rate: float = 0.01
 
+    # Driving the blade into the table. Unlike a missed ball this is not a bad
+    # outcome in the game, it is a broken paddle - so it is the one term that
+    # may take a scored exchange below zero, and it is NOT capped by the
+    # fault-floor that keeps a miss at zero.
+    #
+    # Sized to be unprofitable rather than catastrophic: 25.0 exceeds the 17.8
+    # a perfect return earns, so no return is worth scraping the table for,
+    # while a near-miss at the margin costs little. Depth-scaled, because a
+    # rim 1 mm under the surface and one 50 mm through it are not the same
+    # event.
+    #
+    # This belongs in a constraint head rather than the reward - arXiv
+    # 2505.22974 enforces exactly this class of hardware limit with N-P3O and
+    # reports that soft penalties were violated where a hard constraint was
+    # not. Until that exists, this is the stand-in, and it is deliberately
+    # large enough to dominate.
+    table_strike: float = 25.0
+    table_strike_depth: float = 0.05  # metres at which the penalty saturates
+
 
 def face_hit_quality(contact_normal, face_normal) -> float:
     """1.0 for a square face hit, 0.0 for a rim or edge hit.
@@ -162,6 +181,20 @@ def landing_term(landing_xy, table, aim_xy=None, w: StrokeWeights | None = None)
     return r, True
 
 
+def table_strike_cost(blade_lowest_m, w: StrokeWeights) -> float:
+    """What it costs to have put the blade under the table.
+
+    `blade_lowest_m` is the lowest height the blade rim reached during the
+    exchange, in metres, with 0 the table surface. Zero cost above the surface,
+    rising with depth and saturating, so a graze and a gouge are distinguished
+    but neither becomes unboundedly negative.
+    """
+    if blade_lowest_m is None or blade_lowest_m >= 0.0:
+        return 0.0
+    depth = min(-float(blade_lowest_m), w.table_strike_depth)
+    return w.table_strike * depth / w.table_strike_depth
+
+
 def exchange_reward(
     *,
     contact_normal=None,
@@ -170,6 +203,7 @@ def exchange_reward(
     landing_xy=None,
     table,
     aim_xy=None,
+    blade_lowest=None,
     weights: StrokeWeights | None = None,
 ) -> dict:
     """Score one exchange: the arm's single attempt to return one ball.
@@ -180,8 +214,10 @@ def exchange_reward(
     beats a slow, scored miss), which is reward hack 9 in the design doc.
     """
     w = weights or StrokeWeights()
-    out = {"face": 0.0, "stroke": 0.0, "landing": 0.0, "total": 0.0,
-           "contacted": False, "face_hit": False, "in_bounds": False}
+    penalty = table_strike_cost(blade_lowest, w)
+    out = {"face": 0.0, "stroke": 0.0, "landing": 0.0, "total": -penalty,
+           "contacted": False, "face_hit": False, "in_bounds": False,
+           "table_strike": penalty}
 
     if contact_normal is None or face_normal is None:
         return out
@@ -190,7 +226,7 @@ def exchange_reward(
     quality = face_hit_quality(contact_normal, face_normal)
     out["face"] = w.face_contact * quality
     if quality <= 0.0:
-        out["total"] = 0.0  # caught the rim: a fault, scores nothing
+        out["total"] = -penalty  # caught the rim: a fault, scores nothing
         return out
     out["face_hit"] = True
 
@@ -203,5 +239,9 @@ def exchange_reward(
     raw = stroke_term(face_normal, ball_vel_out, w, contact_normal) * quality
     out["stroke"] = raw * (scale if raw > 0.0 else 1.0)
 
-    out["total"] = max(0.0, out["face"] + out["stroke"] + out["landing"])
+    # The fault floor keeps a miss at zero so deliberate fouling never pays.
+    # The table penalty sits OUTSIDE it: hitting the table is not a way of
+    # losing the point, it is a way of breaking the paddle, and it has to be
+    # able to make an otherwise good return not worth making.
+    out["total"] = max(0.0, out["face"] + out["stroke"] + out["landing"]) - penalty
     return out
