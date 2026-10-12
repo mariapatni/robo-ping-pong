@@ -76,7 +76,7 @@ def run_episode(world, guard, s, l, i, planner):
         if plan is None:
             return {"declined": True, "contacted": False, "face_hit": False,
                     "in_bounds": False, "landing": None, "total": 0.0,
-                    "tilt": float("nan"), "strike": s, "penetration": 0.0}
+                    "tilt": float("nan"), "strike": s.tolist(), "penetration": 0.0}
     else:
         plan = plan_return(s, v_in, l, CFG.ball, T.restitution,
                            CFG.paddle.restitution, seed=i)

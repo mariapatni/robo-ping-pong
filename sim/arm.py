@@ -34,9 +34,21 @@ GRIPPER_JOINT = "gripper"
 # A neutral, arm-up pose to start from and return to.
 HOME = np.array([0.0, -0.6, 0.9, 0.5, 0.0])
 
-# The model integrates at 200 Hz; we command at 50 Hz, matching the rate we
-# expect to achieve on the real servo bus.
-CONTROL_HZ = 50
+# The rate the policy makes decisions at. 30 Hz is the planned hardware rate,
+# not 50: the bus is half-duplex TTL shared by five servos through USB serial
+# on a non-realtime OS, and 30 Hz is what that realistically sustains.
+#
+# It is an expensive number. At 1.8 m/s the ball travels 60 mm between
+# decisions, against a 35 mm usable blade radius - so the policy commits to a
+# position the ball has not reached and cannot correct inside one ball-width.
+# At 50 Hz that figure is 36 mm, almost exactly the blade. Training at 50 and
+# deploying at 30 would therefore hand the policy a third less reaction time
+# than it learned with, which is the kind of mismatch that looks like a
+# mysterious sim2real gap.
+#
+# Randomise over 30-60 Hz during training rather than picking one, so the
+# policy cannot depend on a rate the hardware will not hold.
+CONTROL_HZ = 30
 
 
 class Arm:
