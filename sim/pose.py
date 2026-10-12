@@ -109,6 +109,8 @@ def solve_face_pose_ik(
     normal_weight: float = 0.35,
     restarts: int = 6,
     seed: int = 0,
+    blade_radius: float = 0.055,
+    table_margin: float = 0.005,
 ) -> PoseSolution:
     """Damped least-squares IK on the paddle face, position and normal together.
 
@@ -180,7 +182,13 @@ def solve_face_pose_ik(
                 break
         return q
 
+    # Clearance is a hard filter over restarts, not a term in the cost. The
+    # swept pose set already excludes blades that foul the table, but the IK
+    # searched freely and could land outside it - which is how 37% of swings
+    # still drove the paddle under the surface after the zone was filtered.
+    # A penalty would only trade clearance against accuracy; a filter cannot.
     best = None
+    best_clear = None
     seeds = [np.zeros(5) if q0 is None else np.asarray(q0, float)]
     seeds += [rng.uniform(arm.lower, arm.upper) for _ in range(restarts)]
     for q_start in seeds:
@@ -192,8 +200,16 @@ def solve_face_pose_ik(
         pe = float(np.linalg.norm(pos - target_pos))
         ae = 0.0 if want is None else float(np.degrees(np.arccos(np.clip(nrm @ want, -1.0, 1.0))))
         cost = pe + normal_weight * np.radians(ae)
+        candidate = (cost, q, pos, nrm, pe, ae)
         if best is None or cost < best[0]:
-            best = (cost, q, pos, nrm, pe, ae)
+            best = candidate
+        if blade_lowest(pos, nrm, blade_radius) >= table_margin:
+            if best_clear is None or cost < best_clear[0]:
+                best_clear = candidate
+
+    # Prefer a pose that clears; fall back to the best found only when no
+    # restart cleared at all, so the caller still gets something to inspect.
+    best = best_clear if best_clear is not None else best
 
     _, q, pos, nrm, pe, ae = best
     return PoseSolution(qpos=q, position=pos, normal=nrm, position_error=pe, normal_error_deg=ae)
