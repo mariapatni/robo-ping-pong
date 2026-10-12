@@ -131,6 +131,12 @@ class PaddleConfig:
     priority: int = 2
 
     remove_moving_jaw: bool = True
+
+    # Wrist camera, repositioned into the blade plane. See aim_wrist_camera
+    # for why a rotation cannot achieve this and a move can.
+    wrist_cam_edge_on: bool = True
+    wrist_cam_back: float = 0.085  # behind the blade centre, toward the wrist
+    wrist_cam_rise: float = 0.030  # across the blade axis, staying in-plane
     rgba: tuple[float, float, float, float] = (0.15, 0.15, 0.17, 1.0)
     face_rgba: tuple[float, float, float, float] = (0.80, 0.10, 0.12, 1.0)
 
@@ -398,3 +404,80 @@ def face_pose(model: mujoco.MjModel, data: mujoco.MjData) -> tuple[np.ndarray, n
     if sid < 0:
         raise KeyError(f"site {FACE_SITE!r} not in model - was add_paddle called?")
     return data.site_xpos[sid].copy(), data.site_xmat[sid].reshape(3, 3)[:, 2].copy()
+
+
+WRIST_CAM = "wrist_cam"
+
+
+def aim_wrist_camera(spec: mujoco.MjSpec, enabled: bool = True, prefix: str = "",
+                     cfg: "PaddleConfig | None" = None) -> mujoco.MjSpec:
+    """Move the wrist camera into the blade's plane so it sees both faces.
+
+    As mounted, the camera stares at the back of the blade from 114 mm: the
+    paddle fills the frame, only one side is visible, and a ball on the far
+    face is hidden behind its own target.
+
+    Rotating the camera cannot fix that, which is worth stating plainly because
+    it is the obvious thing to try. What decides whether a view is edge-on is
+    the angle between the face normal and the line from camera to blade - and
+    that line is set by POSITION. On the stock mount it is 53.8 degrees off the
+    normal, and no amount of yaw changes it; yawing 90 degrees simply swings
+    the blade out of frame.
+
+    So the camera moves. It is placed in the blade's own plane, 68 mm from
+    where the stock mount puts it, and aimed back along the blade. From there
+    the blade is a silhouette rather than a wall, both faces are visible at
+    once, and a ball approaching either side sits against open background -
+    which matters because the blade is symmetric and the policy may return
+    with either face.
+
+    This is a bracket change on the real arm, not a firmware one. The vendored
+    MJCF is still not edited; the pose is rewritten on the spec before compile.
+    """
+    if not enabled:
+        return spec
+    cfg = cfg or PaddleConfig()
+    cam = spec.camera(prefix + WRIST_CAM)
+
+    # Work in the paddle body's frame. The blade's long axis is +x and its
+    # face normal is the body's z (the face site flips it to point outward),
+    # so the blade's PLANE is the body's xy-plane. An offset along body z
+    # leaves that plane and un-does the whole point of this function.
+    blade_x = cfg.blade_centre_x
+    back_off = cfg.wrist_cam_back  # behind the blade centre, toward the wrist
+    side_off = cfg.wrist_cam_rise  # across the blade axis, still in-plane
+
+    # The camera is a child of the gripper body, but the paddle hangs off that
+    # same body, so the paddle's own frame transform applies to both.
+    pos, rot = cfg.frame
+    local = np.array([blade_x - back_off, side_off, -cfg.rubber_thickness])
+    cam_pos = pos + rot @ local
+
+    # Look from there at the blade centre: a direction lying in the blade plane.
+    target = pos + rot @ cfg.face_pos
+    fwd = target - cam_pos
+    fwd /= np.linalg.norm(fwd)
+    # MuJoCo cameras look down -z with +y up. Keep the blade normal as the
+    # camera's RIGHT, so the two faces fall either side of the image centre.
+    right = rot @ np.array([0.0, 0.0, 1.0])
+    right = right - (right @ fwd) * fwd
+    right /= np.linalg.norm(right)
+    # Right-handed: with x = right and z = -fwd, y must be z x x. Taking the
+    # cross the other way round makes the basis left-handed, and converting a
+    # determinant -1 matrix to a quaternion silently yields a wrong rotation.
+    back = -fwd
+    up = np.cross(back, right)
+    m = np.column_stack([right, up, back])
+    assert np.linalg.det(m) > 0.9, "camera basis is not a rotation"
+
+
+    cam.pos = cam_pos.tolist()
+    cam.quat = _mat_to_quat(m).tolist()
+    return spec
+
+
+def _mat_to_quat(m: np.ndarray) -> np.ndarray:
+    """Rotation matrix to a MuJoCo (w, x, y, z) quaternion."""
+    q = np.empty(4)
+    mujoco.mju_mat2Quat(q, m.reshape(-1).copy())
+    return q
