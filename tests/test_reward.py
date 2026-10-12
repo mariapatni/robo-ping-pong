@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sim.config import TableConfig  # noqa: E402
 from sim.reward import (  # noqa: E402
     StrokeWeights,
+    striking_normal,
     exchange_reward,
     face_hit_quality,
     lift,
@@ -113,3 +114,35 @@ def test_faults_are_never_negative():
               score(FACE_UP, RISING, AIM, contact_n=[0, 1, 0]),
               score(FACE_DOWN, FALLING, (1.35, 0.0))):
         assert r["total"] >= 0.0
+
+
+# -- either face may strike --------------------------------------------------
+#
+# The blade is symmetric and wrist_roll can present either side, so a stroke
+# rolled 180 degrees is the same stroke. Scoring it off the site's own normal
+# marked a perfectly good lift off the back face as a full overhand.
+
+
+def test_both_faces_score_a_lift_identically():
+    up_v = np.array([1.4, 0.0, 0.6])
+    front = stroke_term(FACE_UP, up_v, StrokeWeights(), None)
+    back = stroke_term(-FACE_UP, up_v, StrokeWeights(), None)
+    assert front == pytest.approx(back)
+    assert front > 0.0
+
+
+def test_both_faces_are_penalised_for_a_real_chop():
+    down_v = np.array([1.0, 0.0, -1.5])
+    chop = unit([0.35, 0.0, -0.94])
+    front = stroke_term(chop, down_v, StrokeWeights(), None)
+    back = stroke_term(-chop, down_v, StrokeWeights(), None)
+    assert front == pytest.approx(back)
+    assert front < 0.0, "a true overhand must still cost, whichever face did it"
+
+
+def test_the_striking_face_is_the_one_that_pushed():
+    """Orientation comes from what the contact did, not from which face the
+    model happens to call outward."""
+    up_v = np.array([1.4, 0.0, 0.6])
+    assert striking_normal(FACE_UP, None, up_v)[2] > 0
+    assert striking_normal(-FACE_UP, None, up_v)[2] > 0

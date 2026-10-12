@@ -88,22 +88,44 @@ def face_hit_quality(contact_normal, face_normal) -> float:
     return float(np.clip((alignment - 0.707) / (1.0 - 0.707), 0.0, 1.0))
 
 
-def lift(face_normal) -> float:
-    """How 'open upward' the face is: +1 straight up, -1 straight down.
+def striking_normal(face_normal, contact_normal=None, ball_vel_out=None):
+    """Which way the paddle actually pushed, as a unit vector.
 
-    Signed, so the same number drives the underhand reward and the overhand
-    penalty, and there is no discontinuity at horizontal.
+    The blade is symmetric and `wrist_roll` can present either side, so the
+    site's own normal is an arbitrary choice of face: rolled 180 degrees it
+    points the other way while the stroke is identical. Taking it at face value
+    scored a perfectly good lift off the back face as a full overhand.
+
+    So the face is oriented by what the contact DID. The push direction is the
+    change in ball velocity; failing that, the contact normal. Only if neither
+    is available does the site normal stand on its own.
     """
     f = np.asarray(face_normal, float)
     n = np.linalg.norm(f)
     if n < 1e-9:
-        return 0.0
-    # Either face may strike, so take whichever side points more upward: a
-    # paddle presenting its back is still underhand if that back is open up.
-    return float(abs(f[2]) / n * np.sign(f[2]) if f[2] >= 0 else f[2] / n)
+        return UP.copy()
+    f = f / n
+
+    push = None
+    if ball_vel_out is not None and np.linalg.norm(ball_vel_out) > 1e-9:
+        push = np.asarray(ball_vel_out, float)
+    elif contact_normal is not None and np.linalg.norm(contact_normal) > 1e-9:
+        push = np.asarray(contact_normal, float)
+    if push is not None and float(f @ push) < 0.0:
+        f = -f
+    return f
 
 
-def stroke_term(face_normal, ball_vel_out, w: StrokeWeights) -> float:
+def lift(face_normal, contact_normal=None, ball_vel_out=None) -> float:
+    """How 'open upward' the striking face is: +1 straight up, -1 straight down.
+
+    Signed, so the same number drives the underhand reward and the overhand
+    penalty, with no discontinuity at horizontal.
+    """
+    return float(striking_normal(face_normal, contact_normal, ball_vel_out)[2])
+
+
+def stroke_term(face_normal, ball_vel_out, w: StrokeWeights, contact_normal=None) -> float:
     """Reward an underhand strike, penalise an overhand one.
 
     The upward-velocity gate is on the *consequence*, not the pose: a policy
@@ -111,7 +133,7 @@ def stroke_term(face_normal, ball_vel_out, w: StrokeWeights) -> float:
     should not score as underhand. Requiring the ball to actually leave with
     upward velocity is the thing a faked pose cannot satisfy.
     """
-    l = lift(face_normal)
+    l = lift(face_normal, contact_normal, ball_vel_out)
     v = np.asarray(ball_vel_out, float)
     going_up = float(v @ UP) > 0.2  # m/s, see docs/reward-design.md
     if l >= 0.0 and going_up:
@@ -178,7 +200,7 @@ def exchange_reward(
     # Stroke credit is scaled down when the ball did not land in: the stroke is
     # shaping toward a return, and a ball that misses the table is not one.
     scale = 1.0 if out["in_bounds"] else w.out_of_bounds_stroke_scale
-    raw = stroke_term(face_normal, ball_vel_out, w) * quality
+    raw = stroke_term(face_normal, ball_vel_out, w, contact_normal) * quality
     out["stroke"] = raw * (scale if raw > 0.0 else 1.0)
 
     out["total"] = max(0.0, out["face"] + out["stroke"] + out["landing"])
