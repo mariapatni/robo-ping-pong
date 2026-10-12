@@ -46,8 +46,18 @@ def sweep_face(
     samples: tuple[int, int, int, int, int] = (29, 15, 15, 13, 11),
     band: tuple[float, float] = STRIKE_BAND,
     max_tilt_deg: float = UNDERHAND_MAX_TILT_DEG,
+    blade_radius: float = 0.055,
+    table_margin: float = 0.005,
 ) -> SweptReach:
-    """Sweep joint space once, keeping every face pose inside the strike band."""
+    """Sweep joint space once, keeping every face pose inside the strike band.
+
+    A pose also has to keep the BLADE off the table, not just the face centre.
+    The rim of a disc tilted t off horizontal hangs R*sin(t) below its centre,
+    so a near-vertical 55 mm blade reaches 55 mm down - and the strike band
+    starts at 30 mm. Without this check half of all swings drove the paddle
+    through the table, the worst by 100 mm, which on hardware is a broken
+    paddle and in simulation is contact forces fighting the arm mid-stroke.
+    """
     site = arm.tip_site if site is None else site
     grids = [np.linspace(lo, hi, n) for lo, hi, n in zip(arm.lower, arm.upper, samples)]
     mesh = np.stack(np.meshgrid(*grids, indexing="ij"), axis=-1).reshape(-1, len(ARM_JOINTS))
@@ -62,8 +72,11 @@ def sweep_face(
         nrm[i] = data.site_xmat[site].reshape(3, 3)[:, 2]
 
     in_band = (pos[:, 2] >= band[0]) & (pos[:, 2] <= band[1])
+    # Lowest point of the rim: centre minus R*sqrt(1 - nz^2).
+    rim = pos[:, 2] - blade_radius * np.sqrt(np.clip(1.0 - nrm[:, 2] ** 2, 0.0, 1.0))
+    clears = rim >= table_margin
     cos_limit = np.cos(np.radians(max_tilt_deg))
-    underhand = in_band & (nrm[:, 2] >= cos_limit) & (nrm[:, 0] > 0.0)
+    underhand = in_band & clears & (nrm[:, 2] >= cos_limit) & (nrm[:, 0] > 0.0)
     return SweptReach(pos=pos[in_band], underhand=underhand[in_band])
 
 

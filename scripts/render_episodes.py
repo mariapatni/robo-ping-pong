@@ -27,7 +27,7 @@ from sim.env import PingPongEnv  # noqa: E402
 from sim.feed import _closest, _fly, aim_feed, sample_targets  # noqa: E402
 from sim.oracle import plan_return  # noqa: E402
 from sim.paddle import PADDLE_BODY, PaddleConfig  # noqa: E402
-from sim.pose import solve_face_pose  # noqa: E402
+from sim.pose import solve_face_pose_ik, windup_pose  # noqa: E402
 from sim.reward import exchange_reward  # noqa: E402
 from sim.zones import grid, sweep_face, zones  # noqa: E402
 
@@ -147,8 +147,8 @@ def main(argv=None) -> int:
 
             plan = plan_return(s, v_in, l, CFG.ball, T.restitution,
                                CFG.paddle.restitution, seed=i)
-            hit = solve_face_pose(world, s, plan.normal)
-            wind = solve_face_pose(world, s - np.array([0.0, 0.0, 0.045]), plan.normal)
+            hit = solve_face_pose_ik(world, s, plan.normal, seed=i)
+            wind = solve_face_pose_ik(world, windup_pose(s, plan.normal), plan.normal, seed=i)
 
             n_before = len(images)
             cn, fn, vo, land = run(

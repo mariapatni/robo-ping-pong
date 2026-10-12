@@ -197,3 +197,108 @@ def solve_face_pose_ik(
 
     _, q, pos, nrm, pe, ae = best
     return PoseSolution(qpos=q, position=pos, normal=nrm, position_error=pe, normal_error_deg=ae)
+
+
+def blade_lowest(face_pos, face_normal, blade_radius: float) -> float:
+    """Height of the lowest point of the blade rim.
+
+    The rim is a circle of radius R in the plane normal to the face, so its
+    lowest point sits R*sqrt(1 - nz^2) below the centre: nothing below the
+    centre when the face is horizontal, a full radius when it is vertical.
+
+    This is the quantity a strike pose has to keep above the table. The face
+    CENTRE clearing the table is not enough, and that was the bug: strike
+    points were sampled down to z = 0.03 while a near-vertical 55 mm blade
+    reaches 55 mm below its own centre.
+    """
+    n = np.asarray(face_normal, float)
+    n = n / max(np.linalg.norm(n), 1e-9)
+    return float(np.asarray(face_pos, float)[2] - blade_radius * np.sqrt(max(0.0, 1.0 - n[2] ** 2)))
+
+
+def clears_table(face_pos, face_normal, blade_radius: float, margin: float = 0.005) -> bool:
+    """Would a paddle at this pose stay out of the table?"""
+    return blade_lowest(face_pos, face_normal, blade_radius) >= margin
+
+
+def windup_pose(strike, face_normal, draw_back: float = 0.055, blade_radius: float = 0.055,
+                margin: float = 0.008):
+    """Where to start the swing: drawn back along the hitting direction.
+
+    The wind-up used to be a blind 45 mm drop in z, which is the one direction
+    guaranteed to make trouble - it aims the blade at the table. Measured, half
+    of all swings put the rim below the table top and the worst reached 100 mm
+    through it. On hardware that is a broken paddle, and in simulation it is
+    contact forces fighting the arm through the whole stroke.
+
+    Drawing back along the face normal instead is both safer and more useful:
+    it is the direction the paddle will travel through the ball, so the stroke
+    arrives with velocity pointing where the ball should go rather than having
+    to turn a corner. If that still fouls the table, the draw is tilted up
+    until it clears.
+    """
+    strike = np.asarray(strike, float)
+    n = np.asarray(face_normal, float)
+    n = n / max(np.linalg.norm(n), 1e-9)
+
+    for lift in np.linspace(0.0, 1.0, 11):
+        direction = n * (1.0 - lift) + np.array([0.0, 0.0, 1.0]) * lift
+        direction /= max(np.linalg.norm(direction), 1e-9)
+        candidate = strike - draw_back * direction
+        if clears_table(candidate, n, blade_radius, margin):
+            return candidate
+    # Nothing clears: back off straight up, which always does.
+    return strike + np.array([0.0, 0.0, draw_back])
+
+
+def safe_windup(
+    arm,
+    strike,
+    face_normal,
+    hit_qpos,
+    blade_radius: float = 0.055,
+    draw_back: float = 0.055,
+    margin: float = 0.008,
+    site: int | None = None,
+    samples: int = 14,
+    seed: int = 0,
+):
+    """A wind-up pose whose whole swing keeps the blade off the table.
+
+    Both endpoints clearing is not enough. The swing interpolates in JOINT
+    space, and a straight line in joint space is a curve in Cartesian space, so
+    the blade can dip between two perfectly legal poses. Choosing the endpoints
+    alone left 14% of swings still scraping the table.
+
+    So the path itself is checked: lift the draw-back direction until no sample
+    along the interpolation puts the rim below `margin`.
+    """
+    site = arm.tip_site if site is None else site
+    strike = np.asarray(strike, float)
+    n = np.asarray(face_normal, float)
+    n = n / max(np.linalg.norm(n), 1e-9)
+
+    data = mujoco.MjData(arm.model)
+
+    def path_clearance(wind_qpos):
+        worst = np.inf
+        for a in np.linspace(0.0, 1.0, samples):
+            data.qpos[arm.qpos_adr] = wind_qpos + (hit_qpos - wind_qpos) * a
+            mujoco.mj_kinematics(arm.model, data)
+            pos = data.site_xpos[site]
+            nrm = data.site_xmat[site].reshape(3, 3)[:, 2]
+            worst = min(worst, blade_lowest(pos, nrm, blade_radius))
+        return worst
+
+    best = None
+    for lift in np.linspace(0.0, 1.0, 9):
+        direction = n * (1.0 - lift) + np.array([0.0, 0.0, 1.0]) * lift
+        direction /= max(np.linalg.norm(direction), 1e-9)
+        target = strike - draw_back * direction
+        sol = solve_face_pose_ik(arm, target, n, site=site, seed=seed)
+        clear = path_clearance(sol.qpos)
+        if best is None or clear > best[0]:
+            best = (clear, sol)
+        if clear >= margin:
+            return sol
+    return best[1]

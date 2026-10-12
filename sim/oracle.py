@@ -40,6 +40,7 @@ class ReturnPlan:
     miss: float  # metres from the requested landing point
     underhand: bool
     tilt_deg: float  # face angle off vertical
+    fouls_table: bool  # the blade rim would be under the table at this pose
     feasible: bool
 
 
@@ -107,6 +108,7 @@ def paddle_for(v_in, v_out, paddle_e: float):
 def plan_return(
     strike, v_in, landing, ball, table_e: float, paddle_e: float,
     max_tilt_deg: float = 60.0, max_paddle_speed: float = 1.5, seed: int = 0,
+    blade_radius: float = 0.055, table_margin: float = 0.005,
 ) -> ReturnPlan:
     """Plan one underhand return from `strike` to `landing`, and say whether
     the arm could actually do it."""
@@ -118,9 +120,17 @@ def plan_return(
         n, speed = -n, -speed
     tilt = float(np.degrees(np.arccos(np.clip(n @ UP, -1.0, 1.0))))
     underhand = tilt <= max_tilt_deg and n[0] > 0.0
-    feasible = bool(underhand and 0.0 <= speed <= max_paddle_speed and miss < 0.08)
+
+    # The rim of a disc tilted t off horizontal hangs R*sin(t) below its
+    # centre. A plan that demands a steep face low over the table is asking the
+    # arm to swing through the table, which is a broken paddle on hardware.
+    rim = float(strike[2] - blade_radius * np.sqrt(max(0.0, 1.0 - n[2] ** 2)))
+    fouls = rim < table_margin
+
+    feasible = bool(underhand and not fouls and 0.0 <= speed <= max_paddle_speed and miss < 0.08)
 
     return ReturnPlan(
         normal=n, paddle_speed=speed, v_out=v_out, landing=predicted,
-        miss=float(miss), underhand=bool(underhand), tilt_deg=tilt, feasible=feasible,
+        miss=float(miss), underhand=bool(underhand), tilt_deg=tilt,
+        fouls_table=bool(fouls), feasible=feasible,
     )

@@ -25,7 +25,7 @@ from sim.ball import BALL_BODY, drag_force  # noqa: E402
 from sim.env import PingPongEnv  # noqa: E402
 from sim.feed import _closest, _fly, aim_feed, sample_targets  # noqa: E402
 from sim.oracle import plan_return  # noqa: E402
-from sim.pose import solve_face_pose_ik  # noqa: E402
+from sim.pose import solve_face_pose_ik, windup_pose  # noqa: E402
 from sim.zones import grid, sweep_face, zones  # noqa: E402
 
 W, H = 620, 470
@@ -111,7 +111,7 @@ def main(argv=None) -> int:
             pl = plan_return(s, (path[j] - path[j - 1]) / dt0, l, CFG.ball,
                              T.restitution, CFG.paddle.restitution, seed=i)
             hit = solve_face_pose_ik(world, s, pl.normal, seed=i)
-            wind = solve_face_pose_ik(world, s - np.array([0, 0, 0.045]), pl.normal, seed=i)
+            wind = solve_face_pose_ik(world, windup_pose(s, pl.normal), pl.normal, seed=i)
 
             mujoco.mj_resetData(m, d)
             d.qpos[world.qpos_adr] = wind.qpos
