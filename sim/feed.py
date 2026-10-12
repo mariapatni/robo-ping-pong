@@ -177,3 +177,99 @@ def sample_targets(occupancy, x_edges, y_edges, n: int, seed: int = 0, z=(0.06, 
     ys = rng.uniform(y_edges[picks[:, 1]], y_edges[picks[:, 1] + 1])
     zs = rng.uniform(z[0], z[1], n)
     return np.stack([xs, ys, zs], axis=1)
+
+
+def preroll_in_sim(world, feed, park_qpos=None, horizon: float = 0.6):
+    """Fly the feed in MuJoCo with the arm out of the way, and report the truth.
+
+    `aim_feed` solves against the lightweight integrator in this module, which
+    is what makes the search fast enough to run per episode. That integrator is
+    close but not identical to MuJoCo: measured over 24 feeds it puts the ball
+    11.7 mm from the intended strike point and, more importantly, **17 ms early**
+    - a systematic bias, not noise.
+
+    17 ms at 1.83 m/s is 30 mm of ball travel, and the blade's usable radius is
+    35 mm, so a swing scheduled off the analytic flight time arrives with almost
+    no margin and misses about half the time. Planning against the real thing
+    removes both errors at once.
+
+    Returns (strike point, time of arrival, incoming velocity) as MuJoCo has
+    them, which is what the swing should be built around.
+    """
+    import mujoco
+
+    from .ball import drag_force
+
+    model, data = world.model, world.data
+    jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ball")
+    qadr, vadr = int(model.jnt_qposadr[jid]), int(model.jnt_dofadr[jid])
+    body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "ball")
+
+    # Swing the arm fully aside. Folded down it stands in the feed's path, and
+    # the "arrival" found is then a rebound off the forearm.
+    park = np.array([world.upper[0], 0.0, 0.0, 0.0, 0.0]) if park_qpos is None else np.asarray(park_qpos)
+
+    mujoco.mj_resetData(model, data)
+    data.qpos[world.qpos_adr] = park
+    data.ctrl[world.actuator_ids] = park
+    data.qpos[qadr:qadr + 3] = feed.pos
+    data.qpos[qadr + 3:qadr + 7] = (1.0, 0.0, 0.0, 0.0)
+    data.qvel[vadr:vadr + 6] = 0.0
+    data.qvel[vadr:vadr + 3] = feed.vel
+    mujoco.mj_forward(model, data)
+
+    dt = model.opt.timestep
+    target = np.asarray(feed.target, float)
+    best = (np.inf, target.copy(), 0.0, np.zeros(3))
+    for k in range(int((feed.flight + horizon) / dt)):
+        vel = data.qvel[vadr:vadr + 3].copy()
+        data.xfrc_applied[body, :3] = drag_force(vel, world.cfg.ball.drag_k)
+        mujoco.mj_step(model, data)
+        pos = data.qpos[qadr:qadr + 3].copy()
+        gap = float(np.linalg.norm(pos - target))
+        if gap < best[0]:
+            best = (gap, pos, k * dt, data.qvel[vadr:vadr + 3].copy())
+    data.xfrc_applied[body, :3] = 0.0
+    _, pos, t, vel = best
+    return pos, float(t), vel
+
+
+def correct_feed(world, feed, iters: int = 3, gain: float = 0.9):
+    """Nudge a feed's launch velocity until MuJoCo puts the ball on the target.
+
+    `aim_feed` solves against this module's own integrator, which is what makes
+    it fast enough to run per episode. MuJoCo disagrees with it: measured over
+    24 feeds the ball lands 11.7 mm from the intended strike point at the median
+    and up to 112 mm at worst, and arrives a systematic 17 ms late.
+
+    That is enough to decide an episode. The blade's usable radius is 35 mm, so
+    a 112 mm error is a clean miss no matter how good the arm is - and one such
+    episode was traced with the IK solving the strike pose to 0.0 mm and 0.0
+    degrees, missing by 263 mm purely because the ball went elsewhere.
+
+    Re-targeting the swing at where the ball actually goes is the wrong fix: it
+    moves the strike point outside the reachable zone and makes contact worse
+    (measured, 50% -> 35%). What is wanted is the ball on the point we chose,
+    so this shoots: fly it, measure the miss, correct the launch, repeat. A
+    couple of passes is enough because the error is near-linear in launch
+    velocity over these distances.
+    """
+    target = np.asarray(feed.target, float)
+    vel = np.array(feed.vel, float)
+    best = feed
+    for _ in range(iters):
+        trial = Feed(pos=feed.pos, vel=vel, target=target, miss=feed.miss,
+                     flight=feed.flight, arrival_speed=feed.arrival_speed)
+        pos, t, v_arr = preroll_in_sim(world, trial)
+        err = target - pos
+        miss = float(np.linalg.norm(err))
+        if miss < best.miss or best is feed:
+            best = Feed(pos=feed.pos, vel=vel.copy(), target=target, miss=miss,
+                        flight=t, arrival_speed=float(np.linalg.norm(v_arr)))
+        if miss < 0.004:
+            break
+        # The ball is ballistic between launch and target, so to first order a
+        # miss of `err` over a flight of `t` is cured by adding err/t to the
+        # launch velocity. Under-relaxed because the bounce makes it nonlinear.
+        vel = vel + gain * err / max(t, 0.1)
+    return best
