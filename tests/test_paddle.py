@@ -5,8 +5,9 @@ Same shape as tests/test_ball.py: build the world, run the physics, check the
 number that came back. Two of these are guards against a specific way this can
 rot. `test_config_matches_cad` fails if cad/paddle.py is re-run and its numbers
 are not carried into PaddleConfig, which is the only link between the two and is
-otherwise silent. `test_rigid_*` fails if the paddle is ever moved onto the
-moving jaw, which would look fine in a render and be wrong in every rollout.
+otherwise silent. `test_the_gripper_is_gone` fails if any of the gripper the
+paddle replaced is left in the model, where it would still weigh 87 g and still
+collide in every rollout.
 """
 
 import json
@@ -18,13 +19,14 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sim.arm import GRIPPER_JOINT, Arm  # noqa: E402
+from sim.arm import ARM_JOINTS, GRIPPER_JOINT, Arm  # noqa: E402
 from sim.ball import BALL_BODY, add_ball  # noqa: E402
 from sim.config import BallConfig, TableConfig  # noqa: E402
 from sim.paddle import (  # noqa: E402
     BLADE_GEOM,
     FACE_SITE,
-    MOVING_JAW_BODY,
+    GRIPPER_BODIES,
+    HOST_BODY,
     PADDLE_BODY,
     PADDLE_HOME,
     PaddleConfig,
@@ -74,13 +76,15 @@ def test_model_compiles_with_the_paddle(arm):
     assert mujoco.mj_name2id(arm.model, mujoco.mjtObj.mjOBJ_SITE, FACE_SITE) >= 0
 
 
-def test_the_five_joint_interface_is_unchanged(arm):
-    """Adding the paddle must not add a degree of freedom, or sim/arm.py's whole
-    contract - five targets, in this order - stops being true."""
-    bare = Arm()
-    assert arm.model.nq == bare.model.nq
-    assert arm.model.nv == bare.model.nv
-    assert arm.model.nu == bare.model.nu
+def test_the_arm_is_left_with_exactly_the_five_joint_interface(arm):
+    """Taking the gripper off removes its joint and actuator, and adding the
+    paddle must not add any back, or sim/arm.py's contract - five targets, in
+    this order - stops being true. Five is also what the servo bus carries."""
+    names = [
+        mujoco.mj_id2name(arm.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(arm.model.nu)
+    ]
+    assert names == list(ARM_JOINTS)
+    assert arm.model.nq == arm.model.nv == len(ARM_JOINTS)
 
 
 def test_it_clears_the_table_at_paddle_home(arm):
@@ -106,25 +110,6 @@ def test_rigid_welded_to_the_wrist_roll_link(arm):
     ]
 
 
-def test_rigid_the_gripper_joint_cannot_move_it(arm):
-    """The paddle must not be downstream of the gripper servo. If it ever is,
-    this is the test that says so: opening the jaw would move the face."""
-    jid = mujoco.mj_name2id(arm.model, mujoco.mjtObj.mjOBJ_JOINT, GRIPPER_JOINT)
-    adr = arm.model.jnt_qposadr[jid]
-
-    arm.reset(PADDLE_HOME)
-    arm.data.qpos[adr] = 0.0
-    mujoco.mj_forward(arm.model, arm.data)
-    shut_pos, shut_normal = face_pose(arm.model, arm.data)
-
-    arm.data.qpos[adr] = 1.5
-    mujoco.mj_forward(arm.model, arm.data)
-    open_pos, open_normal = face_pose(arm.model, arm.data)
-
-    assert np.allclose(shut_pos, open_pos, atol=1e-12)
-    assert np.allclose(shut_normal, open_normal, atol=1e-12)
-
-
 def test_wrist_roll_does_turn_it(arm):
     """The other half of the same statement: the paddle is rigid, and wrist_roll
     is the joint that aims it."""
@@ -138,14 +123,26 @@ def test_wrist_roll_does_turn_it(arm):
     assert 88.0 < angle < 92.0
 
 
-def test_the_retired_moving_jaw_cannot_collide(arm):
-    """It is unbolted on the hardware; here it keeps its joint (sim/arm.py needs
-    the actuator) but must not be able to touch anything."""
-    jaw = body_id(arm, MOVING_JAW_BODY)
-    geoms = np.flatnonzero(arm.model.geom_bodyid == jaw)
-    assert geoms.size
-    assert not arm.model.geom_contype[geoms].any()
-    assert not arm.model.geom_conaffinity[geoms].any()
+def test_the_gripper_is_gone(arm):
+    """On the hardware the fixed jaw, gripper servo, moving jaw and camera mount
+    all come off. None of them may survive in the model: not a joint, not a
+    collider, not the 87 g the upstream model hangs on the wrist_roll link."""
+    assert mujoco.mj_name2id(arm.model, mujoco.mjtObj.mjOBJ_JOINT, GRIPPER_JOINT) < 0
+    for name in GRIPPER_BODIES:
+        assert body_id(arm, name) < 0
+    assert arm.model.ncam == 0
+
+    host = body_id(arm, HOST_BODY)
+    on_host = np.flatnonzero(arm.model.geom_bodyid == host)
+    assert not (arm.model.geom_contype[on_host] | arm.model.geom_conaffinity[on_host]).any()
+    assert arm.model.body_mass[host] < 0.005
+
+
+def test_the_end_of_the_arm_got_lighter(arm):
+    """Paddle and horn together weigh less than the gripper they replace did
+    on its own, before the old paddle was even bolted to it."""
+    host = body_id(arm, HOST_BODY)
+    assert arm.model.body_subtreemass[host] < 0.087
 
 
 # -- it weighs what it should -------------------------------------------------
@@ -159,9 +156,11 @@ def test_mass_is_in_range(arm):
 
 
 def test_it_is_a_small_fraction_of_the_payload(arm):
-    """500 g is the SO-101's rating and paddle mass is bought straight out of
-    joint speed, which is already the binding constraint."""
-    assert PaddleConfig().mass < 0.10 * 0.500
+    """500 g is the SO-101's rating and end-effector mass is bought straight out
+    of joint speed, which is already the binding constraint. Measured as
+    everything wrist_roll turns: with the gripper still fitted that was 156 g."""
+    host = body_id(arm, HOST_BODY)
+    assert arm.model.body_subtreemass[host] < 0.12 * 0.500
 
 
 def test_inertia_is_positive_definite_and_disc_like():
@@ -185,6 +184,25 @@ def test_config_matches_cad():
     assert cfg.blade_centre_x == pytest.approx(props["blade_centre_x_mm"] * 1e-3, rel=1e-4)
     assert np.allclose(cfg.plastic_com, np.array(props["com_mm"]) * 1e-3, atol=1e-6)
     assert np.allclose(cfg.plastic_inertia, props["inertia_kg_m2"], atol=1e-9)
+
+
+def test_the_horn_screws_can_be_driven():
+    """The screws go in from the paddle side, so each needs a straight line back
+    along its own axis. cad/paddle.py checks this on the solid; this is the same
+    check on the committed numbers, so it runs without a CAD stack."""
+    props = json.loads(PROPS.read_text())
+    driver_r = 2.5
+    axis = props["axis_z_mm"]
+    for y, z in props["horn_holes_yz_mm"]:
+        assert np.hypot(y, z - axis) == pytest.approx(7.0, abs=1e-6), "Ø14 bolt circle"
+        assert abs(y) - driver_r > 0.5 * props["rib_width_mm"], "the rib is in the way"
+        assert z - driver_r > props["neck_thick_mm"], "the neck web is in the way"
+
+
+def test_it_is_painted_black(arm):
+    for suffix in ("_visual", "_rubber"):
+        gid = mujoco.mj_name2id(arm.model, mujoco.mjtObj.mjOBJ_GEOM, PADDLE_BODY + suffix)
+        assert arm.model.geom_rgba[gid][:3].max() < 0.1
 
 
 def test_the_sim_mesh_is_small_enough_to_ship():

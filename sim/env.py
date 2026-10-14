@@ -45,10 +45,9 @@ class PingPongEnv(Arm):
         add_net(spec, self.cfg.table, self.cfg.net)
         add_cameras(spec, self.cfg.table, self.cfg.cameras)
         if self.cfg.paddle is not None:
-            from .paddle import add_paddle, aim_wrist_camera
+            from .paddle import add_paddle
 
             add_paddle(spec, self.cfg.paddle)
-            aim_wrist_camera(spec, self.cfg.paddle.wrist_cam_edge_on, cfg=self.cfg.paddle)
         add_ball(spec, self.cfg.ball, pos=self.park_pos)
 
     # -- ball state -----------------------------------------------------------

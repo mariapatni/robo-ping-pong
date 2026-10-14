@@ -1,9 +1,10 @@
-"""What each camera actually sees: both arms, both viewpoints, one rally feed.
+"""What each camera actually sees: both arms, one rally feed.
 
-    .venv/bin/python scripts/camera_views.py      # -> out/camera_views_quad.mp4
+    .venv/bin/python scripts/camera_views.py      # -> out/camera_views_pair.mp4
 
-A 2x2 grid - each arm's fixed table-side camera and its wrist camera - so the
-inputs the perception stack will really get are visible side by side. The fixed
+Each arm's fixed table-side camera, side by side, so the inputs the perception
+stack will really get can be compared. There are no wrist cameras: the camera
+mount came off with the gripper when the paddle went onto the wrist_roll horn. The fixed
 cameras carry the real OV9281 intrinsics (1.8 mm lens, 3.84 x 2.40 mm sensor,
 640x400), so their framing is what the bought hardware will frame.
 """
@@ -63,12 +64,12 @@ def tile(frames, labels, size):
         cv2.putText(f, lab, (8, 19), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (245, 245, 245), 1, cv2.LINE_AA)
         cv2.rectangle(f, (0, 0), (f.shape[1] - 1, f.shape[0] - 1), (90, 90, 90), 1)
         cells.append(f)
-    return np.vstack([np.hstack(cells[:2]), np.hstack(cells[2:])])
+    return np.hstack(cells)
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--out", type=Path, default=Path("out/camera_views_quad.mp4"))
+    p.add_argument("--out", type=Path, default=Path("out/camera_views_pair.mp4"))
     p.add_argument("--feeds", type=int, default=4)
     p.add_argument("--fps", type=int, default=30)
     args = p.parse_args(argv)
@@ -84,9 +85,8 @@ def main(argv=None) -> int:
     qadr, vadr = int(model.jnt_qposadr[jid]), int(model.jnt_dofadr[jid])
     bb = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, BALL_BODY)
 
-    cams = ["cam_a", "wrist_cam", "cam_b", "b_wrist_cam"]  # unprefixed arm is A
-    labels = ["ARM A - fixed table camera", "ARM A - wrist camera",
-              "ARM B - fixed table camera", "ARM B - wrist camera"]
+    cams = ["cam_a", "cam_b"]  # unprefixed arm is A
+    labels = ["ARM A - fixed table camera", "ARM B - fixed table camera"]
     have = []
     for c in cams:
         cid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, c)

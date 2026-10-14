@@ -30,8 +30,8 @@ from sim.table import add_table  # noqa: E402
 # (label, lookat, distance, azimuth, elevation) - the four views of the sheet.
 VIEWS = (
     ("arm and paddle", (0.16, -0.02, 0.12), 0.80, 128.0, -14.0),
-    ("mount, outboard", (0.22, -0.02, 0.16), 0.20, 95.0, -6.0),
-    ("mount, from above", (0.22, -0.02, 0.16), 0.20, 150.0, -45.0),
+    ("hub on the horn, outboard", (0.18, -0.005, 0.235), 0.13, 75.0, -10.0),
+    ("the four screw heads, up the roll axis", (0.172, 0.0, 0.244), 0.09, 205.0, 45.0),
     ("hitting face", (0.25, -0.02, 0.12), 0.28, 195.0, -4.0),
 )
 

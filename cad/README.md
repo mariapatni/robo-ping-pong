@@ -1,6 +1,7 @@
 # The paddle
 
-A 3D-printable ping-pong paddle that bolts to an SO-101's gripper, modelled
+A 3D-printable ping-pong paddle that replaces an SO-101's gripper and bolts
+straight onto the wrist_roll servo's horn, modelled
 parametrically so the numbers can be argued with rather than reverse-engineered
 out of a mesh.
 
@@ -9,10 +10,12 @@ out of a mesh.
 | tool | [build123d](https://build123d.readthedocs.io) 0.13 (Python, scriptable, no GUI, no licence) |
 | source | [`paddle.py`](paddle.py) - every dimension is a named constant at the top |
 | blade | 110 mm diameter, 2.4 mm thick |
-| mass | **30.8 g printed** in PLA (24.8 cm3), **+13.9 g** of rubber = **44.7 g** on the arm |
-| inertia about the wrist_roll axis | 3.86e-5 kg m2 |
+| mass | **39.5 g printed** in PLA (31.9 cm3), **+13.9 g** of rubber = **53.5 g** |
+| what wrist_roll carries | **55 g** (paddle + horn), down from **156 g** with the gripper and old paddle |
+| inertia about the wrist_roll axis | 3.72e-5 kg m2 |
 | print | face-down, flat on the bed, **no supports** |
-| fasteners | 3x M2 x 16 self-tapping, into holes the jaw already has |
+| fasteners | the **4x M3 x 6** that held the gripper on, into the horn |
+| finish | painted matt black all over; the rubber is black too |
 
 ![the paddle fitted](out/paddle_fitted.png)
 
@@ -42,8 +45,14 @@ script, copy the four numbers it prints into `PaddleConfig`, run the tests.
 A regulation blade is about 150 mm across. Three things push back on that, and
 only two of them turn out to matter.
 
+*These numbers were worked out when the paddle bolted to the gripper's fixed jaw,
+and the masses below are from that version. The argument is about the blade, so
+it still holds. The horn-mounted paddle is heavier on its own (53.5 g, because
+its neck now does the jaw's job), but the arm carries 55 g beyond wrist_roll
+instead of 156 g.*
+
 **Inertia about the wrist: not the constraint.** A 110 mm blade adds 3.86e-5
-kg m2 about the wrist_roll axis. The STS3215's own reflected armature in the
+kg m2 about the wrist_roll axis (3.72e-5 for the horn-mounted version). The STS3215's own reflected armature in the
 vendored model is `armature="0.028"`, so the paddle is **0.14%** of what that
 joint is already accelerating. At 150 mm it would be 1.30e-4, still only 0.41%.
 Blade size is essentially free in wrist inertia, and any argument for a small
@@ -88,45 +97,58 @@ frame goes from **66.6% of the arm's half (max x = 0.480 m)** to **73.4%
 
 ## How it mounts, and what is and is not confirmed
 
-The paddle replaces the **moving jaw** - that part comes off the arm and does not
-go back - but it bolts to the **fixed jaw** (`wrist_roll_follower_so101_v1`),
-which is part of the wrist_roll link itself. A paddle hung off the moving jaw
-would take every ball impact through the gripper servo's gear train and horn, so
-it would be neither rigid nor good for the servo, and `sim/arm.py` already treats
-the end effector as rigid.
+The **whole gripper comes off**: the fixed jaw (`wrist_roll_follower_so101_v1`),
+the gripper servo inside it, the moving jaw and the wrist camera mount. The
+paddle's own hub takes the fixed jaw's place on the wrist_roll servo's horn. That
+takes 111 g off the end of the arm (87 g of fixed jaw and servo, 12 g of moving
+jaw and 12 g of camera mount, per the upstream model). It also leaves
+five servos on the bus instead of six, and puts the paddle on the stiffest thing
+there is to put it on.
 
-**What is confirmed.** The fixed jaw's finger carries a row of **five 1.8 mm
-through-holes on a 10.01 mm pitch**, drilled across the finger. These are
-measured off the vendored upstream mesh
-(`sim/models/so101/assets/wrist_roll_follower_so101_v1.stl`, which came from
-mujoco_menagerie, which came from TheRobotStudio's CAD) by fitting cylinders to
-the triangles whose normals are perpendicular to the hole axis. Residuals: hole
-radii 0.85-0.94 mm over the five, pitches 9.889 / 10.163 / 9.840 / 10.152 mm, and
-the five centres are collinear to within 0.1 mm. Ø1.8 mm is exactly the pilot an
-M2 self-tapping screw wants, which is consistent with how the rest of the arm is
-assembled.
+**What is confirmed.** The LeRobot SO-101 assembly guide says the gripper
+attaches "to the motor horn on the wrist using 4 M3x6mm screws", driven from
+the gripper side. The hub copies the fixed jaw's horn interface. It was measured
+by slicing the vendored jaw mesh (`sim/models/so101/assets/wrist_roll_follower_so101_v1.stl`)
+at its mating face and fitting circles to the sections:
 
-**What is not confirmed.** TheRobotStudio does not publish a dimensioned drawing
-or a fastener schedule; the repo README only says to have #0 and #1 Phillips
-drivers, from which M2/M3 is an inference, not a fact. So the *intended purpose*
-of that hole row is unknown - it may be for a gripper pad insert - and nothing
-above comes from a primary text source. Every one of those numbers is therefore a
-named constant in `paddle.py` (`JAW_HOLE_DIA`, `JAW_HOLE_S`, `JAW_ROW_DIR_XZ`,
-`JAW_HOLE_0_XZ`, `JAW_FACE_Y0`, `JAW_FACE_SLOPE`, `MOUNT_HOLES`). **Put calipers
-on the real jaw before you print**: check the hole pitch and the finger's width at
-the three tip-most holes, correct the constants, re-run. Nothing else has to
-change.
+| feature | jaw (measured) | horn it meets (`sts3215_03a_v1.stl`) |
+|---|---|---|
+| screw holes | 4x Ø3.20, on a Ø14.00 circle, at 45 deg | 4x Ø2.50 on Ø14.00, at 45 deg |
+| centre | Ø5.40 through | Ø6 hub |
+| plate | 3.0 mm | disc Ø20.0 x 2.1 mm |
+| locating lip | r = 10.0-12.0 mm, 1.0 mm tall, open where gripper x < -3.7 mm | |
 
-The paddle uses the **three holes nearest the tip** and no others, so no part of
-the arm has to be drilled or modified. The finger tapers about 4.9 deg per side;
-rather than tilt the whole mating face to match - which would put a shallow
-overhang under the part - the face stays flat and perpendicular to the screws and
-three bosses of stepped height (1.04 / 1.88 / 2.74 mm) take up the taper.
+Ø3.2 clears M3 and Ø2.5 is an M3 tapping size, which agrees with the guide. A
+3.0 mm plate is what makes the original M3 x 6 screws the right length, so the
+same four go back in.
 
-It mounts on the arm's **-y side**. That is not a free choice: the wrist camera
-and its mount occupy 60 mm of the +y side. Mounting on +y needs a mirrored print,
-and `PaddleConfig.frame` rejects it rather than silently building a model that
-intersects the camera.
+**What is not confirmed.** These numbers are measured off meshes, not taken from
+a dimensioned drawing. TheRobotStudio does not publish one. Every number is a
+named constant at the top of `paddle.py` (`HORN_HOLE_DIA`, `HORN_HOLE_PCD`,
+`HORN_HOLE_ANGLES`, `HORN_CENTRE_DIA`, `HORN_LIP_R`, `HORN_LIP_OPEN_X`). **Put
+calipers on the jaw you are taking off before you print**, correct the constants,
+and re-run. Nothing else has to change.
+
+**The one constraint that shapes the part.** The screws go in from the paddle
+side, so every head needs a straight line back along the roll axis for a
+screwdriver. The neck therefore is not a solid bar down the middle. It is a 4 mm
+web lying in the blade's own plane, with a 3 mm rib on its back, and both pass
+*between* the four screw axes. `paddle.py` checks this on the solid: a Ø5 driver
+along each screw axis must not touch the part, or the build fails.
+`tests/test_paddle.py` repeats the check on the committed numbers.
+
+**Where the blade is.** The face sits 12.5 mm off the roll axis on the
+wrist_roll link's -y side, and the blade centre is 145 mm down the axis from the
+horn. That is where the jaw-mounted paddle had it (12 mm and 144.9 mm), so the
+reach, `PADDLE_HOME` and the strike planning all carry over. The blade is now
+straight down the roll axis, though, not tilted 20 deg as it was on the jaw, so
+re-measure anything tuned to the exact old pose. `BLADE_CX` shortens it. That
+gives a lighter, quicker paddle with less reach, and nothing else has to change.
+
+**Clocking.** Four holes at 90 deg mean it fits the horn four ways. Fit it so the
+rubber faces the same way the old paddle's did. Then re-run the LeRobot
+calibration for wrist_roll, because the horn's spline does not have to land
+where the gripper's did.
 
 
 ## Printing it
@@ -141,14 +163,28 @@ not a single overhang and no supports are needed.
 | nozzle / layer height | 0.4 mm / 0.2 mm | 0.15 mm if you want a nicer glue face |
 | walls (perimeters) | **4** | 1.6 mm of the 2.4 mm blade is wall; this is what makes a 2.4 mm disc stiff |
 | top / bottom layers | 4 / 4 | at 0.2 mm the blade is 12 layers, so it comes out effectively solid |
-| infill | 40% gyroid | only the neck and bosses have any interior at all |
+| infill | 40% gyroid | only the hub, rib and neck have any interior at all |
 | brim / raft | none | a 110 mm disc on the bed needs no help |
 | supports | **none** | |
 
 Print it on a smooth bed (PEI or glass). The first layer is the surface you are
 going to glue rubber to.
 
-Expect about 25 cm3, ~10 m of 1.75 mm filament, and 30.8 g.
+Expect about 32 cm3, ~13 m of 1.75 mm filament, and 39.5 g.
+
+The hub is a vertical plate standing on its own flat bottom edge, with straight
+sides and a round top. Its screw holes are horizontal, which every slicer prints
+without supports.
+
+### Painting it black
+
+- Paint the print, not the rubber. Paint on the hitting surface kills both grip
+  and bounce. If you want the face black, buy a black sheet, which most are.
+- Mask the face and paint before you glue. Contact cement wants bare plastic.
+- Mask the hub's horn side and keep paint out of the five holes. A few tenths
+  of a millimetre there is enough to stop the hub seating flat on the horn.
+- Keep it light. A couple of grams of paint is noise; a thick coat starts
+  showing up in the mass the arm carries.
 
 ### The rubber
 
@@ -169,13 +205,13 @@ If you would rather have a real pocket, set `RUBBER_RECESS = RUBBER_THICK` in
 
 ### Hardware
 
-- **3 x M2 x 16 mm self-tapping (Phillips #0)**, driven from the outside of the
-  pad straight into the jaw's existing 1.8 mm holes. Ø1.8 is the correct pilot
-  for M2 in PLA; do not drill them out.
-- Machine screws plus M2 nuts also work if you would rather not cut threads in
-  the jaw - the pad's holes are Ø2.3 clearance.
-- Tighten in the order middle, tip, wrist, and stop when the bosses are seated.
-  You are clamping into printed plastic.
+- **4 x M3 x 6 mm**, the ones that held the gripper on. They pass through the
+  hub's Ø3.2 holes and thread into the horn.
+- Unbolt the gripper servo's cable from the wrist_roll servo. Nothing replaces
+  it, and the bus now ends at servo 5.
+- Seat the horn in the lip, start all four screws, then tighten them in a cross
+  pattern. You are clamping a printed plate against a plastic horn, so stop
+  when it seats.
 
 
 ## Opening and editing it, from scratch

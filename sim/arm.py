@@ -5,8 +5,9 @@ real arm will both speak: five joint position targets, in radians, in a fixed
 order. Everything else in the project is built on top of that contract, so it
 is worth keeping small and boring.
 
-The gripper is deliberately not part of the interface. The paddle is rigid, so
-the gripper is held at a constant position and never commanded.
+The gripper is not part of the interface. With the paddle fitted it is not on
+the arm at all (sim.paddle.remove_gripper); on the bare upstream model it is held
+at a constant position and never commanded.
 """
 
 from __future__ import annotations
@@ -96,8 +97,12 @@ class Arm:
         self.qpos_adr = self.model.jnt_qposadr[self.joint_ids]
         self.qvel_adr = self.model.jnt_dofadr[self.joint_ids]
 
-        self.gripper_actuator = actuator_id(GRIPPER_JOINT)
-        self.gripper_qpos_adr = self.model.jnt_qposadr[joint_id(GRIPPER_JOINT)]
+        # Absent once the paddle has replaced the gripper; None means "no gripper".
+        self.gripper_actuator = None
+        self.gripper_qpos_adr = None
+        if mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, GRIPPER_JOINT) >= 0:
+            self.gripper_actuator = actuator_id(GRIPPER_JOINT)
+            self.gripper_qpos_adr = self.model.jnt_qposadr[joint_id(GRIPPER_JOINT)]
 
         self.lower = self.model.jnt_range[self.joint_ids, 0].copy()
         self.upper = self.model.jnt_range[self.joint_ids, 1].copy()
@@ -135,7 +140,8 @@ class Arm:
         applied, so callers can see when they asked for something unreachable."""
         target = self.clip(q)
         self.data.ctrl[self.actuator_ids] = target
-        self.data.ctrl[self.gripper_actuator] = self.gripper_hold
+        if self.gripper_actuator is not None:
+            self.data.ctrl[self.gripper_actuator] = self.gripper_hold
         return target
 
     def step(self, n: int = 1) -> None:
@@ -147,7 +153,8 @@ class Arm:
         q = HOME if q is None else q
         target = self.clip(q)
         self.data.qpos[self.qpos_adr] = target
-        self.data.qpos[self.gripper_qpos_adr] = self.gripper_hold
+        if self.gripper_qpos_adr is not None:
+            self.data.qpos[self.gripper_qpos_adr] = self.gripper_hold
         self.command(target)
         mujoco.mj_forward(self.model, self.data)
 

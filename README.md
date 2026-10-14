@@ -74,9 +74,10 @@ position targets, in radians, in a fixed order.**
 shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll
 ```
 
-The gripper is excluded on purpose - the paddle is rigid, so it is held at a
-constant position and never commanded. The sim integrates at 200 Hz and we
-command at 50 Hz, matching the rate we expect from the real servo bus.
+There is no gripper. The paddle bolts straight onto the wrist_roll servo's horn
+in its place, so the arm has five servos and the paddle turns with wrist_roll.
+The sim integrates at 200 Hz and we command at 50 Hz, matching the rate we
+expect from the real servo bus.
 
 ## Layout
 
@@ -101,7 +102,7 @@ scripts/reach.py    print the reachable footprint over the arm's half
 scripts/camera_study.py  sweep camera poses, write the numbers and a montage
 tests/test_arm.py   it reaches what it is told, and respects its limits
 tests/test_ball.py  it falls, bounces to spec, and is slowed by air
-tests/test_paddle.py  the paddle is on, is rigid, weighs 45 g, and returns the ball
+tests/test_paddle.py  the gripper is off, the paddle is on the horn, rigid, and returns the ball
 tests/test_scene.py the wood, the markers, the net, and the camera model
 ```
 

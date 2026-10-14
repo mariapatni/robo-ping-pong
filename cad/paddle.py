@@ -18,42 +18,44 @@ is what catches a change made here and not carried across.
 WHAT IT BOLTS TO, AND WHY THERE
 -------------------------------
 
-The SO-101 gripper has two jaws. `moving_jaw_so101_v1` hangs off the gripper
-servo's output; `wrist_roll_follower_so101_v1` is the fixed jaw, which is part of
-the wrist_roll link itself. The paddle replaces the moving jaw - that one comes
-off and does not go back - but it is bolted to the FIXED jaw, because a paddle on
-the gripper servo's output would take every ball impact through one plastic gear
-train and a horn, which is neither rigid nor kind to the servo. Bolted to the
-fixed jaw the paddle is rigid relative to the arm and wrist_roll turns it, which
-is exactly the contract sim/arm.py already assumes.
+Straight onto the wrist_roll servo's horn. The whole gripper - the fixed jaw
+(`wrist_roll_follower_so101_v1`), the gripper servo inside it, the moving jaw
+and the camera mount - comes off the arm, and the paddle's own hub takes the
+fixed jaw's place. That sheds 111 g - gripper servo, both jaws, camera mount - from the end
+of the arm, and leaves five servos on the bus instead of six.
 
-The fixed jaw's finger carries a row of five 1.8 mm holes on a 10.01 mm pitch,
-drilled straight through it. They are measured off the vendored upstream mesh
-(see cad/README.md for the method and the residuals) - not from a dimensioned
-drawing, which TheRobotStudio does not publish - so every one of those numbers is
-a named constant below and can be corrected against the real part with calipers.
-The paddle uses the three holes nearest the tip and no others, so nothing on the
-arm has to be drilled or modified.
+The hub copies the fixed jaw's horn interface exactly, so the paddle goes on
+with the four M3 x 6 mm screws that held the jaw on (the LeRobot SO-101
+assembly guide: "attach it to the motor horn on the wrist using 4 M3x6mm
+screws"). The interface is measured off the vendored jaw mesh
+(sim/models/so101/assets/wrist_roll_follower_so101_v1.stl) by slicing it at the
+mating face, and cross-checked against the horn in sts3215_03a_v1.stl:
 
-The finger tapers, ~5.2 deg per side. Rather than tilt the whole mounting face to
-match - which would put a shallow overhang on the underside of the part and cost
-us support-free printing - the mating face stays flat and perpendicular to the
-screws, and three bosses of stepped height take up the taper. They grow upwards
-in the print orientation, so they cost nothing.
+    four Ø3.2 holes on a Ø14 circle, at 45 deg     horn: four Ø2.5 on Ø14, at 45 deg
+    a Ø5.4 centre hole, for the horn hub and screw
+    a 1 mm lip, r = 10..12 mm, open on one side     horn disc: Ø20 x 2.1 mm
+
+The screws go in from the paddle side and thread into the horn, so the heads
+need a straight line back along the roll axis for a screwdriver. That is the
+one constraint that shapes the part: the neck is a flat web lying in the
+blade's own plane, offset to the hitting-face side of the axis, and it and its
+stiffening rib pass BETWEEN the four screw axes rather than across them.
+`build()` checks it - a Ø5 driver along each screw axis must not touch the part.
 
 
-PRINT ORIENTATION, AND THE ONE THING IT COSTS
----------------------------------------------
+PRINT ORIENTATION
+-----------------
 
-The part prints face-down: the hitting face is the first layer, flat on the bed,
-and everything else - neck, pad, bosses - grows upwards. No supports anywhere.
+Hitting face down, flat on the bed, as before. The blade, the neck web and the
+rib grow upwards from it; the hub is a vertical plate standing on its own flat
+bottom edge, with straight sides and a round top, so it needs no supports
+either. Its holes are horizontal, which every slicer prints without help.
 
-That rules out a recessed pocket for the rubber. A pocket on the bed-facing side
-would leave a ~100 mm disc of floor bridging over nothing. So the rubber face is
-dead flat, which is what contact cement actually wants, and the rubber is located
-instead by a shallow annular groove that is both a trim line and a glue relief;
-the groove's 1 mm roof is a bridge a slicer will not notice. `RUBBER_RECESS`
-exists for anyone who would rather have the true pocket and pay for supports.
+There is no recessed pocket for the rubber, for the same reason as before: a
+pocket on the bed-facing side would be a 100 mm bridge. The rubber is located
+by a shallow annular groove that is both a trim line and a glue relief.
+`RUBBER_RECESS` exists for anyone who would rather have the pocket and pay for
+supports.
 """
 
 from __future__ import annotations
@@ -66,9 +68,10 @@ import numpy as np
 from build123d import (
     Circle,
     Part,
+    Plane,
+    Polygon,
     Pos,
     Rectangle,
-    RectangleRounded,
     chamfer,
     export_step,
     export_stl,
@@ -79,27 +82,39 @@ from build123d import (
 # Parameters. Millimetres and degrees throughout; sim/paddle.py converts.
 # =============================================================================
 
-# -- the fixed jaw, measured off sim/models/so101/assets/wrist_roll_follower_so101_v1.stl.
-#    All of it is expressed in the `gripper` body frame of so101.xml, whose z
-#    axis is the wrist_roll axis and whose -z points down the jaw.
-JAW_HOLE_DIA = 1.8  # +/- 0.05 over the five holes
-JAW_HOLE_0_XZ = (-27.47, -49.84)  # the hole nearest the wrist
-JAW_ROW_DIR_XZ = (0.3446, -0.9387)  # unit, pointing down the finger
-JAW_HOLE_S = (0.0, 9.889, 20.051, 29.891, 40.043)  # along the row; pitch 10.01 +/- 0.09
-JAW_FACE_Y0 = -9.464  # body y of the -y side face at s = 0
-JAW_FACE_SLOPE = 0.085  # d(face y)/ds, i.e. the 4.9 deg taper of that face
-MOUNT_HOLES = (2, 3, 4)  # which of the five we use: the three nearest the tip
-MOUNT_REF_HOLE = 3  # the paddle frame's origin sits on this one
+# -- the wrist_roll horn interface, measured off the fixed jaw it replaces. In
+#    the `gripper` body frame of so101.xml (the wrist_roll link) the mating face
+#    is the plane z = 0, the roll axis is the z axis, and the horn is on +z.
+HORN_HOLE_DIA = 3.2  # M3 clearance; the screw threads into the horn's Ø2.5 hole
+HORN_HOLE_PCD = 14.0
+HORN_HOLE_ANGLES = (45.0, 135.0, 225.0, 315.0)
+HORN_CENTRE_DIA = 5.4  # clears the horn's hub and its centre screw
+HORN_LIP_R = (10.0, 12.0)  # the Ø20 horn disc sits inside it
+HORN_LIP_HEIGHT = 1.0
+HORN_LIP_OPEN_X = -3.7  # gripper-frame x: the lip stops here, as the jaw's does
 
-# Which side of the jaw the paddle goes on. -1 is body -y, and it is not a free
-# choice: the wrist camera and its mount stick 60 mm out the +y side.
-MOUNT_SIDE = -1
+# -- the hub that replaces the jaw. 3.0 mm is the jaw's own plate, which is what
+#    makes the original M3 x 6 screws the right length: 3 mm through the plate,
+#    the rest into the horn.
+HUB_THICK = 3.0
+HUB_R = 12.5
+
+# The roll axis sits this far above the hitting face (the print bed). It has to
+# be at least HUB_R for the hub to stand on the bed, and it is very nearly where
+# the old jaw-mounted paddle had its face (12 mm off the jaw's centre plane).
+AXIS_Z = HUB_R
 
 # -- the blade. 110 mm is a deliberate 73% of a regulation blade; see cad/README.md
 #    for the inertia, torque, mass and table-clearance numbers behind it.
 BLADE_DIA = 110.0
 BLADE_THICK = 2.4
 BLADE_RIM_CHAMFER = 0.8  # on the back face only; the front is the print bed
+
+# Blade centre, measured from the horn face down the roll axis. 145 mm puts it
+# where the jaw-mounted paddle had it (144.9 mm from the wrist_roll origin), so
+# the arm's reach and every strike pose planned against it carry over. Shorten
+# it for a lighter, faster, shorter-reaching paddle; nothing else has to change.
+BLADE_CX = 145.0
 
 # -- the rubber sheet. Not modelled as a solid: it is bought, not printed.
 RUBBER_THICK = 1.2  # a thin pips-out sheet, no sponge
@@ -108,19 +123,16 @@ GROOVE_INSET = 3.5  # from the rim, so the rubber is trimmed 3.5 mm inside it
 GROOVE_WIDTH = 1.0
 GROOVE_DEPTH = 0.6
 
-# -- the neck and the mounting pad
-PAD_THICK = 3.2
-PAD_WIDTH = 18.0
-PAD_CORNER_R = 4.0
-PAD_BEHIND_FIRST_HOLE = 8.0  # material behind the wrist-most screw
-PAD_INTO_BLADE = 6.0  # how far the neck runs under the blade, for the fillet
-BOSS_DIA = 6.0  # the jaw's side face is only ~11 mm wide there
-SCREW_CLEAR_DIA = 2.3  # M2 clearance; the screw self-taps into the 1.8 mm jaw hole
+# -- the neck: a flat web in the blade plane, plus a rib on its back
+NECK_WIDTH = 20.0
+NECK_THICK = 4.0
+NECK_INTO_BLADE = 6.0  # how far the web runs under the blade
+RIB_WIDTH = 3.0
+RIB_TOP = 9.0  # rib height at the hub, from the bed; it tapers into the blade
+RIB_INTO_BLADE = 15.0
 
-# The bed plane, given as a body-y coordinate. Everything else is measured from
-# it. It sets the standoff between the hitting face and the jaw's centre plane,
-# and so how far the blade is offset from the wrist_roll axis.
-BED_Y = -12.0
+# A screwdriver has to reach each screw head straight down the screw's axis.
+DRIVER_DIA = 5.0
 
 # -- material
 PLA_DENSITY = 1.24e-3  # g/mm^3
@@ -140,41 +152,29 @@ SIM_MESH = HERE.parent / "sim" / "models" / "paddle" / "paddle.stl"
 # =============================================================================
 # Derived geometry, in the paddle's own frame
 # =============================================================================
-#   x  along the jaw's hole row, pointing at the blade
-#   y  across it
-#   z  the print direction: 0 is the hitting face (the bed), +z is towards the jaw
+#   x  down the roll axis, from the horn face towards the blade
+#   y  across the blade
+#   z  the print direction: 0 is the hitting face (the bed), +z is the back
 #
-# so the mounting screws run along +z and the blade normal is -z.
+# In the `gripper` body frame that is x = -z_g, y = -x_g, z = y_g + AXIS_Z: the
+# hitting face looks along the body's -y, which is the side the old paddle faced
+# too. sim/paddle.py builds the same frame from the same numbers.
 
 BLADE_R = 0.5 * BLADE_DIA
-S_REF = JAW_HOLE_S[MOUNT_REF_HOLE]
 
 
-def hole_x(i: int) -> float:
-    """Paddle-frame x of jaw hole `i`."""
-    return JAW_HOLE_S[i] - S_REF
+def horn_holes() -> list[tuple[float, float]]:
+    """(y, z) of the four horn screws, in the paddle frame."""
+    r = 0.5 * HORN_HOLE_PCD
+    out = []
+    for a in HORN_HOLE_ANGLES:
+        xg, yg = r * math.cos(math.radians(a)), r * math.sin(math.radians(a))
+        out.append((-xg, yg + AXIS_Z))
+    return out
 
 
-def jaw_face_z(i: int) -> float:
-    """Paddle-frame z of the jaw's side face at hole `i`, i.e. the boss top.
-
-    The face is |JAW_FACE_Y0 + slope*s| off the jaw's centre plane and the bed is
-    |BED_Y| off it, both on the MOUNT_SIDE, so the boss has to make up the
-    difference - and the difference shrinks down the finger, which is the taper.
-    """
-    return abs(BED_Y) - abs(JAW_FACE_Y0 + JAW_FACE_SLOPE * JAW_HOLE_S[i])
-
-
-MOUNT_X = tuple(hole_x(i) for i in MOUNT_HOLES)
-BOSS_TOP_Z = tuple(jaw_face_z(i) for i in MOUNT_HOLES)
-BOSS_HEIGHT = tuple(z - PAD_THICK for z in BOSS_TOP_Z)
-
-# The blade sits just clear of the jaw's tip. Its centre is pushed out until the
-# rim clears the last mounting hole by PAD_INTO_BLADE.
-BLADE_CX = MOUNT_X[-1] + PAD_INTO_BLADE + BLADE_R
-
-PAD_X0 = MOUNT_X[0] - PAD_BEHIND_FIRST_HOLE
-PAD_X1 = BLADE_CX - BLADE_R + PAD_INTO_BLADE
+NECK_X1 = BLADE_CX - BLADE_R + NECK_INTO_BLADE
+RIB_X1 = BLADE_CX - BLADE_R + RIB_INTO_BLADE
 
 
 # =============================================================================
@@ -184,32 +184,52 @@ PAD_X1 = BLADE_CX - BLADE_R + PAD_INTO_BLADE
 
 def build() -> Part:
     """The paddle as one build123d solid, in the paddle frame, in millimetres."""
-    if min(BOSS_HEIGHT) <= 0.2:
-        raise ValueError(f"BED_Y={BED_Y} leaves boss heights {BOSS_HEIGHT}; move the bed out")
-
     blade = extrude(Pos(BLADE_CX, 0) * Circle(BLADE_R), amount=BLADE_THICK)
 
-    pad_len = PAD_X1 - PAD_X0
-    neck = extrude(
-        Pos(0.5 * (PAD_X0 + PAD_X1), 0) * RectangleRounded(pad_len, PAD_WIDTH, PAD_CORNER_R),
-        amount=PAD_THICK,
+    # The hub: a round plate on the roll axis, with straight sides down to the
+    # bed so it stands on a flat edge instead of a tangent point.
+    hub_profile = Pos(0, AXIS_Z) * Circle(HUB_R) + Pos(0, 0.5 * AXIS_Z) * Rectangle(
+        2 * HUB_R, AXIS_Z
     )
-    part = blade + neck
+    hub = extrude(Plane.YZ * hub_profile, amount=HUB_THICK)
 
-    # A gusset where the neck meets the blade: without it the step from 3.2 mm to
-    # 2.4 mm is the hinge the whole blade folds about on a mishit.
-    part = part + extrude(
-        Pos(0.5 * (PAD_X1 + PAD_X1 + 14.0), 0) * Rectangle(14.0, PAD_WIDTH), amount=PAD_THICK
-    ).intersect(extrude(Pos(BLADE_CX, 0) * Circle(BLADE_R), amount=PAD_THICK))
+    # The lip that locates the horn disc. Filled down to the bed under the horn,
+    # so it has no overhang of its own, and cut open where the jaw's is.
+    lip_profile = (
+        Pos(0, AXIS_Z) * Circle(HORN_LIP_R[1])
+        + Pos(0, 0.5 * AXIS_Z) * Rectangle(2 * HORN_LIP_R[1], AXIS_Z)
+    ) - Pos(0, AXIS_Z) * Circle(HORN_LIP_R[0])
+    keep = Pos(-HORN_LIP_OPEN_X - 50.0, AXIS_Z) * Rectangle(100.0, 100.0)  # y <= -x_open
+    lip = extrude(Plane.YZ.offset(-HORN_LIP_HEIGHT) * (lip_profile & keep), amount=HORN_LIP_HEIGHT)
 
-    for x, h in zip(MOUNT_X, BOSS_HEIGHT):
-        part = part + extrude(Pos(x, 0, PAD_THICK) * Circle(0.5 * BOSS_DIA), amount=h)
+    neck = extrude(
+        Pos(0.5 * (HUB_THICK + NECK_X1), 0) * Rectangle(NECK_X1 - HUB_THICK, NECK_WIDTH),
+        amount=NECK_THICK,
+    )
+    rib = extrude(
+        Plane.XZ
+        * Polygon(
+            (HUB_THICK, 0.0),
+            (HUB_THICK, RIB_TOP),
+            (RIB_X1, BLADE_THICK),
+            (RIB_X1, 0.0),
+            align=None,
+        ),
+        amount=0.5 * RIB_WIDTH,
+        both=True,
+    )
+    part = blade + hub + lip + neck + rib
 
-    # Screw holes, drilled clear through pad and boss.
-    for x, top in zip(MOUNT_X, BOSS_TOP_Z):
-        part = part - extrude(
-            Pos(x, 0, -1.0) * Circle(0.5 * SCREW_CLEAR_DIA), amount=top + 2.0
+    # Through the hub and lip: the four screws and the centre clearance.
+    def bore(y: float, z: float, dia: float):
+        return extrude(
+            Plane.YZ.offset(-HORN_LIP_HEIGHT - 1.0) * Pos(y, z) * Circle(0.5 * dia),
+            amount=HUB_THICK + HORN_LIP_HEIGHT + 2.0,
         )
+
+    for y, z in horn_holes():
+        part = part - bore(y, z, HORN_HOLE_DIA)
+    part = part - bore(0.0, AXIS_Z, HORN_CENTRE_DIA)
 
     # The rubber's trim line and glue relief, cut into the hitting face.
     r_out = BLADE_R - GROOVE_INSET
@@ -235,7 +255,25 @@ def build() -> Part:
     except Exception as exc:  # pragma: no cover - cosmetic only
         print(f"  (rim chamfer skipped: {exc})")
 
+    check_driver_access(part)
     return part
+
+
+def check_driver_access(part: Part) -> None:
+    """Every screw must be reachable straight down its own axis.
+
+    The screws are driven from the paddle side into the horn, so a part that
+    fouls a screwdriver cannot be fitted at all - and that failure would only
+    show up on the bench, after printing.
+    """
+    for y, z in horn_holes():
+        shaft = extrude(
+            Plane.YZ.offset(HUB_THICK + 0.01) * Pos(y, z) * Circle(0.5 * DRIVER_DIA),
+            amount=400.0,
+        )
+        clash = (part & shaft).volume
+        if clash > 1e-6:
+            raise ValueError(f"the screw at y={y:.2f}, z={z:.2f} cannot be driven: {clash:.2f} mm^3 in the way")
 
 
 # =============================================================================
@@ -327,12 +365,15 @@ def main() -> int:
             "blade_centre_x_mm": BLADE_CX,
             "rubber_thick_mm": RUBBER_THICK,
             "rubber_mass_g": float(rubber_mass),
-            "mount_hole_x_mm": list(MOUNT_X),
-            "boss_top_z_mm": list(BOSS_TOP_Z),
-            "bed_y_mm": BED_Y,
-            "pad_thick_mm": PAD_THICK,
-            "pad_x_mm": [PAD_X0, PAD_X1],
-            "pad_width_mm": PAD_WIDTH,
+            "axis_z_mm": AXIS_Z,
+            "hub_thick_mm": HUB_THICK,
+            "hub_r_mm": HUB_R,
+            "horn_holes_yz_mm": [list(h) for h in horn_holes()],
+            "neck_x_mm": [HUB_THICK, NECK_X1],
+            "neck_width_mm": NECK_WIDTH,
+            "neck_thick_mm": NECK_THICK,
+            "rib_width_mm": RIB_WIDTH,
+            "rib_top_mm": RIB_TOP,
             "fine_triangles": int(faces.shape[0]),
             "sim_triangles": int(sim_faces.shape[0]),
         }
@@ -340,11 +381,11 @@ def main() -> int:
     (OUT / "paddle_props.json").write_text(json.dumps(props, indent=2) + "\n")
 
     print(f"blade            {BLADE_DIA:.1f} mm dia x {BLADE_THICK:.1f} mm, centre x = {BLADE_CX:.1f}")
-    print(f"mount holes x    {np.round(MOUNT_X, 2)}  boss heights {np.round(BOSS_HEIGHT, 2)}")
+    print(f"horn screws (yz) {np.round(horn_holes(), 2).tolist()}")
     print(f"volume           {props['volume_mm3']:.0f} mm^3")
     print(f"PLA mass         {props['mass_g']:.1f} g   (+ {rubber_mass:.1f} g of rubber)")
     print(f"centre of mass   {np.round(props['com_mm'], 2)} mm (paddle frame)")
-    print(f"inertia (kg m^2) {np.array(props['inertia_kg_m2'][:3])}")
+    print(f"inertia (kg m^2) {np.array(props['inertia_kg_m2'])}")
     print(f"triangles        {faces.shape[0]} fine, {sim_faces.shape[0]} for the sim")
     print(f"wrote {OUT/'paddle.step'}, {OUT/'paddle.stl'}, {SIM_MESH}, {OUT/'paddle_props.json'}")
     return 0

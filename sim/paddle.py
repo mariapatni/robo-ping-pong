@@ -4,7 +4,7 @@ Same contract as sim/table.py and sim/ball.py - one `add_*` function handed the
 MjSpec before compile, so the vendored MJCF is never edited. Nothing here imports
 build123d; the geometry comes from `cad/paddle.py` via two committed artefacts:
 
-    sim/models/paddle/paddle.stl   the visual mesh, 942 triangles
+    sim/models/paddle/paddle.stl   the visual mesh
     cad/out/paddle_props.json      mass, centre of mass, inertia
 
 `PaddleConfig`'s defaults are those numbers, copied in so the simulator has no
@@ -14,32 +14,32 @@ CAD dependency, and `tests/test_paddle.py` fails if the two drift apart.
 WHERE IT ATTACHES
 -----------------
 
-To the `gripper` body - the wrist_roll link - and not to `moving_jaw_so101_v1`.
-The moving jaw is on the far side of the gripper servo's gear train, so a paddle
-there would be neither rigid nor good for the servo. On the real arm the moving
-jaw comes off and the paddle bolts to the fixed jaw, which is part of this same
-body; in the model `remove_moving_jaw` switches the jaw's collisions off and makes
-it translucent to match. Its 12 g of inertia is deliberately left in place: it is
-a small, conservative error in the direction of a heavier end effector.
+Straight onto the wrist_roll servo's horn. On the real arm the whole gripper
+comes off - fixed jaw, gripper servo, moving jaw, camera mount - and the paddle's
+own hub bolts to the horn with the four M3 screws that held the jaw. In the model
+`add_paddle` does the same thing to the spec: it deletes the gripper's geoms,
+its moving jaw (and with it the `gripper` joint and actuator), and the camera
+mount, and leaves the `gripper` body - which IS the wrist_roll link, named by the
+upstream model - carrying only the horn. The paddle body hangs off it with no
+joint, so MuJoCo welds it to the wrist_roll link.
 
-The paddle body carries no joint, so MuJoCo welds it to the wrist_roll link and
-it costs the model no degrees of freedom.
+The arm is left with exactly the five joints of sim.arm.ARM_JOINTS, which is also
+what the hardware bus will have on it.
 
 
 THE PADDLE FRAME
 ----------------
 
-`add_paddle` derives the attachment frame from the jaw's own screw holes rather
-than from a hand-copied pos/quat, so re-measuring the jaw moves the paddle without
-anyone having to redo trigonometry. In the paddle's frame:
+Matches cad/paddle.py exactly, so a coordinate read off the CAD is a coordinate
+here:
 
-    x   along the jaw's row of mounting holes, pointing at the blade
-    y   across it
-    z   0 is the hitting face, +z points back at the jaw
+    x   down the roll axis, from the horn face towards the blade
+    y   across the blade
+    z   0 is the hitting face, +z is the back; the roll axis is at z = axis_offset
 
-which matches cad/paddle.py exactly, so a coordinate read off the CAD is a
-coordinate here. The blade normal - the direction the ball comes from - is -z, and
-the `paddle_face` site is placed on the rubber with its own z along that normal.
+In the `gripper` body that is x = -z_g, y = -x_g, z = y_g + axis_offset. The blade
+normal - the direction the ball comes from - is -z, and the `paddle_face` site
+is placed on the rubber with its own z along that normal.
 """
 
 from __future__ import annotations
@@ -56,10 +56,13 @@ import numpy as np
 PADDLE_BODY = "paddle"
 PADDLE_MESH = "paddle"
 BLADE_GEOM = "paddle_blade"
-PAD_GEOM = "paddle_pad"
+HUB_GEOM = "paddle_hub"
+NECK_GEOM = "paddle_neck"
+RIB_GEOM = "paddle_rib"
 FACE_SITE = "paddle_face"
-HOST_BODY = "gripper"
-MOVING_JAW_BODY = "moving_jaw_so101_v1"
+HOST_BODY = "gripper"  # the wrist_roll link, as the upstream model names it
+GRIPPER_BODIES = ("moving_jaw_so101_v1", "camera_mount")
+GRIPPER_ACTUATOR = "gripper"
 
 MESH_PATH = Path(__file__).resolve().parent / "models" / "paddle" / "paddle.stl"
 
@@ -83,40 +86,44 @@ class PaddleConfig:
     # -- blade, from cad/paddle.py -------------------------------------------
     blade_diameter: float = 0.110
     blade_thickness: float = 0.0024
-    blade_centre_x: float = 0.071152  # in the paddle frame
+    blade_centre_x: float = 0.145  # in the paddle frame: down the roll axis
     rubber_thickness: float = 0.0012
     rubber_radius: float = 0.0505  # the disc inside the trim groove
 
     # -- mass properties of the print, about its own centre of mass ----------
-    plastic_mass: float = 0.030774
-    plastic_com: tuple[float, float, float] = (0.064741, 0.0, 0.001269)
+    plastic_mass: float = 0.039529
+    plastic_com: tuple[float, float, float] = (0.113665, -0.000024, 0.001975)
     # MuJoCo fullinertia order: ixx, iyy, izz, ixy, ixz, iyz.
     plastic_inertia: tuple[float, float, float, float, float, float] = (
-        2.09277e-05,
-        3.35178e-05,
-        5.44093e-05,
-        0.0,
-        1.14428e-07,
-        0.0,
+        2.15555e-05,
+        1.239745e-04,
+        1.448883e-04,
+        -1.0984e-07,
+        2.99144e-06,
+        6.4e-09,
     )
     rubber_mass: float = 0.013941
 
-    # -- the mounting pad, as a box for collision ----------------------------
-    pad_x: tuple[float, float] = (-0.01784, 0.022152)
-    pad_width: float = 0.018
-    pad_thickness: float = 0.0032
+    # -- the hub, neck and rib, as boxes for collision -----------------------
+    hub_thickness: float = 0.003
+    hub_radius: float = 0.0125
+    neck_x: tuple[float, float] = (0.003, 0.096)
+    neck_width: float = 0.020
+    neck_thickness: float = 0.004
+    rib_width: float = 0.003
+    rib_top: float = 0.009  # at the hub; the collision box keeps it full length
 
     # -- where it bolts on ---------------------------------------------------
-    # The fixed jaw's row of five 1.8 mm holes, in the `gripper` body frame,
-    # measured off the vendored mesh. `ref_hole_s` is the one the paddle frame's
-    # origin sits on (the middle of the three used).
-    hole_0_xz: tuple[float, float] = (-0.02747, -0.04984)
-    row_dir_xz: tuple[float, float] = (0.3446, -0.9387)
-    ref_hole_s: float = 0.029891
-    # Body y of the hitting face. Negative: the paddle goes on the arm's -y side,
-    # because the wrist camera and its mount occupy 60 mm of the +y side. A
-    # positive value would need a mirrored print, so it is rejected outright.
-    bed_y: float = -0.012
+    # The roll axis's height above the hitting face. The face looks along the
+    # wrist_roll link's -y, the side the old jaw-mounted paddle faced.
+    axis_offset: float = 0.0125
+
+    # -- the horn left on the wrist_roll link once the gripper is gone -------
+    # A Ø20 x 2.1 mm plastic disc and its M3 centre screw. Only a token: what
+    # matters is that the 87 g the upstream model hangs on this link is gone.
+    horn_mass: float = 0.0015
+    horn_thickness: float = 0.0021
+    horn_radius: float = 0.010
 
     # -- contact -------------------------------------------------------------
     # 0.85 is the measured ball-on-inverted-rubber figure; bare PLA is ~0.60,
@@ -130,15 +137,10 @@ class PaddleConfig:
     friction: tuple[float, float, float] = (0.9, 0.005, 0.0001)
     priority: int = 2
 
-    remove_moving_jaw: bool = True
-
-    # Wrist camera, repositioned into the blade plane. See aim_wrist_camera
-    # for why a rotation cannot achieve this and a move can.
-    wrist_cam_edge_on: bool = True
-    wrist_cam_back: float = 0.085  # behind the blade centre, toward the wrist
-    wrist_cam_rise: float = 0.030  # across the blade axis, staying in-plane
-    rgba: tuple[float, float, float, float] = (0.15, 0.15, 0.17, 1.0)
-    face_rgba: tuple[float, float, float, float] = (0.80, 0.10, 0.12, 1.0)
+    # Painted matt black, all over. The rubber is a hair lighter only so the
+    # face can be told from the back in a render.
+    rgba: tuple[float, float, float, float] = (0.02, 0.02, 0.02, 1.0)
+    face_rgba: tuple[float, float, float, float] = (0.05, 0.05, 0.05, 1.0)
 
     # -- derived -------------------------------------------------------------
 
@@ -216,22 +218,18 @@ class PaddleConfig:
     def frame(self) -> tuple[np.ndarray, np.ndarray]:
         """(position, 3x3 rotation) of the paddle frame in the `gripper` body.
 
-        Built from the hole row, not hand-copied: x is the row direction, z is
-        the jaw's side-face normal pointing back at the jaw, y closes the set.
+        The horn face is the body's z = 0 plane and the roll axis its z axis, so
+        the paddle frame is that axis turned to point down the paddle, dropped
+        `axis_offset` to the hitting face.
         """
-        if self.bed_y >= 0.0:
-            raise ValueError("bed_y must be negative: the +y side is the wrist camera's")
-        dx, dz = self.row_dir_xz
-        x_axis = np.array([dx, 0.0, dz], dtype=float)
-        x_axis /= np.linalg.norm(x_axis)
-        z_axis = np.array([0.0, 1.0, 0.0])  # from the bed at -y back towards the jaw
-        y_axis = np.cross(z_axis, x_axis)
-        rot = np.column_stack([x_axis, y_axis, z_axis])
-
-        hx, hz = self.hole_0_xz
-        pos = np.array([hx, 0.0, hz]) + self.ref_hole_s * x_axis
-        pos[1] = self.bed_y
-        return pos, rot
+        rot = np.column_stack(
+            [
+                [0.0, 0.0, -1.0],  # x: down the roll axis, away from the horn
+                [-1.0, 0.0, 0.0],  # y: across the blade
+                [0.0, 1.0, 0.0],  # z: from the hitting face to the back
+            ]
+        )
+        return np.array([0.0, -self.axis_offset, 0.0]), rot
 
     @property
     def quat(self) -> np.ndarray:
@@ -270,16 +268,17 @@ def read_stl(path: Path = MESH_PATH) -> tuple[np.ndarray, np.ndarray]:
 
 def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
                prefix: str = "") -> mujoco.MjSpec:
-    """Bolt the paddle onto the wrist_roll link, rigidly.
+    """Take the gripper off and bolt the paddle onto the wrist_roll horn, rigidly.
 
-    The visual is the CAD mesh; collision is a cylinder and a box, because a
-    2.7 g ball on a 942-triangle mesh is exactly the contact MuJoCo is worst at,
-    and the blade is a cylinder to within a tenth of a millimetre anyway. The
+    The visual is the CAD mesh; collision is a cylinder and three boxes, because
+    a 2.7 g ball on a 900-triangle mesh is exactly the contact MuJoCo is worst
+    at, and the blade is a cylinder to within a tenth of a millimetre anyway. The
     cylinder is grown by `rubber_thickness` on the hitting side so the contact
     surface is the rubber, which is what the ball actually touches.
     """
     cfg = cfg or PaddleConfig()
     pos, _ = cfg.frame
+    remove_gripper(spec, cfg, prefix)
 
     # The mesh is an asset, not a body, so two arms share one copy. Adding it
     # again under a second prefix is a duplicate-name error, and duplicating
@@ -341,20 +340,29 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
         group=3,
         rgba=[1.0, 0.0, 0.0, 0.3],
     )
-    x0, x1 = cfg.pad_x
-    body.add_geom(
-        name=prefix + PAD_GEOM,
-        type=mujoco.mjtGeom.mjGEOM_BOX,
-        pos=[0.5 * (x0 + x1), 0.0, 0.5 * cfg.pad_thickness],
-        size=[0.5 * (x1 - x0), 0.5 * cfg.pad_width, 0.5 * cfg.pad_thickness],
-        mass=0.0,
-        condim=3,
-        friction=list(cfg.friction),
-        solref=list(cfg.contact_solref),
-        priority=cfg.priority,
-        group=3,
-        rgba=[1.0, 0.0, 0.0, 0.3],
-    )
+    # Hub, neck web and rib. The rib tapers on the print; its box does not, which
+    # errs towards the safety check seeing a little more paddle than there is.
+    ax, w, t = cfg.axis_offset, cfg.neck_width, cfg.neck_thickness
+    x0, x1 = cfg.neck_x
+    boxes = {
+        HUB_GEOM: ((0.0, cfg.hub_thickness), cfg.hub_radius, (0.0, ax + cfg.hub_radius)),
+        NECK_GEOM: ((x0, x1), 0.5 * w, (0.0, t)),
+        RIB_GEOM: ((x0, x1), 0.5 * cfg.rib_width, (t, cfg.rib_top)),
+    }
+    for name, ((bx0, bx1), half_y, (bz0, bz1)) in boxes.items():
+        body.add_geom(
+            name=prefix + name,
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            pos=[0.5 * (bx0 + bx1), 0.0, 0.5 * (bz0 + bz1)],
+            size=[0.5 * (bx1 - bx0), half_y, 0.5 * (bz1 - bz0)],
+            mass=0.0,
+            condim=3,
+            friction=list(cfg.friction),
+            solref=list(cfg.contact_solref),
+            priority=cfg.priority,
+            group=3,
+            rgba=[1.0, 0.0, 0.0, 0.3],
+        )
 
     # The face frame. Rotated 180 deg about the paddle's x so that the site's own
     # z is the outward face normal - i.e. site_xmat[:, 2] is where the ball has to
@@ -366,28 +374,48 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
         group=3,
     )
 
-    if cfg.remove_moving_jaw:
-        _retire_moving_jaw(spec, prefix)
     return spec
 
 
-def _retire_moving_jaw(spec: mujoco.MjSpec, prefix: str = "") -> None:
-    """Switch the moving jaw off without deleting it.
+def remove_gripper(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
+                   prefix: str = "") -> None:
+    """Strip the wrist_roll link back to its horn, as on the hardware.
 
-    On the hardware it is unbolted and set aside. Deleting the body here would
-    take the `gripper` joint and actuator with it, and sim/arm.py requires both -
-    it holds the gripper at a constant position rather than commanding it. So the
-    jaw stays, loses its collisions so it cannot foul the ball or the paddle, and
-    goes translucent so a render does not imply it is still fitted.
+    Deletes every geom on the link (the fixed jaw, the gripper servo and their
+    colliders), the moving jaw - which takes the `gripper` joint with it - its
+    actuator, and the camera mount and its camera. The link's 87 g upstream
+    inertial is replaced by the horn alone; the paddle brings its own.
     """
-    jaw = spec.body(prefix + MOVING_JAW_BODY)
-    if jaw is None:
-        return
-    for geom in jaw.geoms:
-        geom.contype = 0
-        geom.conaffinity = 0
-        rgba = list(geom.rgba)
-        geom.rgba = rgba[:3] + [0.18]
+    cfg = cfg or PaddleConfig()
+    act = spec.actuator(prefix + GRIPPER_ACTUATOR)
+    if act is not None:  # before its joint goes, or MuJoCo drops it for us
+        spec.delete(act)
+    for name in GRIPPER_BODIES:
+        child = spec.body(prefix + name)
+        if child is not None:
+            spec.delete(child)
+
+    host = spec.body(prefix + HOST_BODY)
+    for geom in list(host.geoms):
+        spec.delete(geom)
+
+    m, r, h = cfg.horn_mass, cfg.horn_radius, cfg.horn_thickness
+    host.explicitinertial = True
+    host.mass = m
+    host.ipos = [0.0, 0.0, 0.5 * h]
+    ixx = m * (3.0 * r * r + h * h) / 12.0
+    host.fullinertia = [ixx, ixx, 0.5 * m * r * r, 0.0, 0.0, 0.0]
+    host.add_geom(
+        name=prefix + "wrist_horn",
+        type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+        pos=[0.0, 0.0, 0.5 * h],
+        size=[r, 0.5 * h, 0.0],
+        mass=0.0,
+        contype=0,
+        conaffinity=0,
+        group=2,
+        rgba=[0.1, 0.1, 0.1, 1.0],
+    )
 
 
 # -- reading it back ----------------------------------------------------------
@@ -404,80 +432,3 @@ def face_pose(model: mujoco.MjModel, data: mujoco.MjData) -> tuple[np.ndarray, n
     if sid < 0:
         raise KeyError(f"site {FACE_SITE!r} not in model - was add_paddle called?")
     return data.site_xpos[sid].copy(), data.site_xmat[sid].reshape(3, 3)[:, 2].copy()
-
-
-WRIST_CAM = "wrist_cam"
-
-
-def aim_wrist_camera(spec: mujoco.MjSpec, enabled: bool = True, prefix: str = "",
-                     cfg: "PaddleConfig | None" = None) -> mujoco.MjSpec:
-    """Move the wrist camera into the blade's plane so it sees both faces.
-
-    As mounted, the camera stares at the back of the blade from 114 mm: the
-    paddle fills the frame, only one side is visible, and a ball on the far
-    face is hidden behind its own target.
-
-    Rotating the camera cannot fix that, which is worth stating plainly because
-    it is the obvious thing to try. What decides whether a view is edge-on is
-    the angle between the face normal and the line from camera to blade - and
-    that line is set by POSITION. On the stock mount it is 53.8 degrees off the
-    normal, and no amount of yaw changes it; yawing 90 degrees simply swings
-    the blade out of frame.
-
-    So the camera moves. It is placed in the blade's own plane, 68 mm from
-    where the stock mount puts it, and aimed back along the blade. From there
-    the blade is a silhouette rather than a wall, both faces are visible at
-    once, and a ball approaching either side sits against open background -
-    which matters because the blade is symmetric and the policy may return
-    with either face.
-
-    This is a bracket change on the real arm, not a firmware one. The vendored
-    MJCF is still not edited; the pose is rewritten on the spec before compile.
-    """
-    if not enabled:
-        return spec
-    cfg = cfg or PaddleConfig()
-    cam = spec.camera(prefix + WRIST_CAM)
-
-    # Work in the paddle body's frame. The blade's long axis is +x and its
-    # face normal is the body's z (the face site flips it to point outward),
-    # so the blade's PLANE is the body's xy-plane. An offset along body z
-    # leaves that plane and un-does the whole point of this function.
-    blade_x = cfg.blade_centre_x
-    back_off = cfg.wrist_cam_back  # behind the blade centre, toward the wrist
-    side_off = cfg.wrist_cam_rise  # across the blade axis, still in-plane
-
-    # The camera is a child of the gripper body, but the paddle hangs off that
-    # same body, so the paddle's own frame transform applies to both.
-    pos, rot = cfg.frame
-    local = np.array([blade_x - back_off, side_off, -cfg.rubber_thickness])
-    cam_pos = pos + rot @ local
-
-    # Look from there at the blade centre: a direction lying in the blade plane.
-    target = pos + rot @ cfg.face_pos
-    fwd = target - cam_pos
-    fwd /= np.linalg.norm(fwd)
-    # MuJoCo cameras look down -z with +y up. Keep the blade normal as the
-    # camera's RIGHT, so the two faces fall either side of the image centre.
-    right = rot @ np.array([0.0, 0.0, 1.0])
-    right = right - (right @ fwd) * fwd
-    right /= np.linalg.norm(right)
-    # Right-handed: with x = right and z = -fwd, y must be z x x. Taking the
-    # cross the other way round makes the basis left-handed, and converting a
-    # determinant -1 matrix to a quaternion silently yields a wrong rotation.
-    back = -fwd
-    up = np.cross(back, right)
-    m = np.column_stack([right, up, back])
-    assert np.linalg.det(m) > 0.9, "camera basis is not a rotation"
-
-
-    cam.pos = cam_pos.tolist()
-    cam.quat = _mat_to_quat(m).tolist()
-    return spec
-
-
-def _mat_to_quat(m: np.ndarray) -> np.ndarray:
-    """Rotation matrix to a MuJoCo (w, x, y, z) quaternion."""
-    q = np.empty(4)
-    mujoco.mju_mat2Quat(q, m.reshape(-1).copy())
-    return q
