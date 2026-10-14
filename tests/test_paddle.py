@@ -168,7 +168,7 @@ def test_inertia_is_positive_definite_and_disc_like():
     w = np.linalg.eigvalsh(cfg.inertia)
     assert (w > 0).all()
     # A flat disc's largest principal moment is about its normal and is about the
-    # sum of the other two. 25% either way covers the neck and the pad.
+    # sum of the other two. 25% either way covers the hub and the gusset.
     assert w[2] == pytest.approx(w[0] + w[1], rel=0.25)
 
 
@@ -197,6 +197,22 @@ def test_the_horn_screws_can_be_driven():
         assert np.hypot(y, z - axis) == pytest.approx(7.0, abs=1e-6), "Ø14 bolt circle"
         assert abs(y) - driver_r > 0.5 * props["rib_width_mm"], "the rib is in the way"
         assert z - driver_r > props["neck_thick_mm"], "the neck web is in the way"
+
+
+def test_nothing_sweeps_into_the_wrist_bracket():
+    """The wrist_roll servo's bracket reaches 4.73 mm past the horn face, outside
+    14.1 mm of the roll axis, and wrist_roll swings the paddle round into it.
+    MuJoCo cannot see this - it does not collide a link with its parent - so it
+    is checked here on the committed numbers (and in cad/paddle.py on the solid).
+    """
+    props = json.loads(PROPS.read_text())
+    depth, bracket_r = 4.73, 14.1
+    rim = props["blade_centre_x_mm"] - 0.5 * props["blade_dia_mm"]
+    assert rim > depth, "the blade's rim is inside the bracket's reach"
+    # The gusset web leaves the hub inside the bracket's depth, so its far
+    # corners (on the bed, at the web's edge) must stay inside its radius.
+    corner = np.hypot(0.5 * props["neck_width_mm"], props["axis_z_mm"])
+    assert corner < bracket_r
 
 
 def test_it_is_painted_black(arm):

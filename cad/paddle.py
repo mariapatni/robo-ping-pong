@@ -36,19 +36,26 @@ mating face, and cross-checked against the horn in sts3215_03a_v1.stl:
     a 1 mm lip, r = 10..12 mm, open on one side     horn disc: Ø20 x 2.1 mm
 
 The screws go in from the paddle side and thread into the horn, so the heads
-need a straight line back along the roll axis for a screwdriver. That is the
-one constraint that shapes the part: the neck is a flat web lying in the
-blade's own plane, offset to the hitting-face side of the axis, and it and its
-stiffening rib pass BETWEEN the four screw axes rather than across them.
-`build()` checks it - a Ø5 driver along each screw axis must not touch the part.
+need a straight line back along the roll axis for a screwdriver. So the short
+gusset joining hub to blade is a flat web lying in the blade's own plane,
+offset to the hitting-face side of the axis, and it and its stiffening rib pass
+BETWEEN the four screw axes rather than across them. `build()` checks it - a Ø5
+driver along each screw axis must not touch the part.
+
+The other constraint is the wrist itself. The bracket holding the wrist_roll
+servo reaches 4.7 mm past the horn face, outside 14.1 mm of the axis, and
+wrist_roll sweeps everything round into it. That is what sets how short the
+paddle can be: the blade starts 6 mm from the horn, its centre is 61 mm from
+it, and the hub and lip stand on teardrop feet instead of square ones.
+`build()` checks that too.
 
 
 PRINT ORIENTATION
 -----------------
 
-Hitting face down, flat on the bed, as before. The blade, the neck web and the
-rib grow upwards from it; the hub is a vertical plate standing on its own flat
-bottom edge, with straight sides and a round top, so it needs no supports
+Hitting face down, flat on the bed, as before. The blade, the gusset web and
+the rib grow upwards from it; the hub is a vertical plate standing on a
+teardrop foot - 45 deg flanks into a round top - so it needs no supports
 either. Its holes are horizontal, which every slicer prints without help.
 
 There is no recessed pocket for the rubber, for the same reason as before: a
@@ -110,11 +117,20 @@ BLADE_DIA = 110.0
 BLADE_THICK = 2.4
 BLADE_RIM_CHAMFER = 0.8  # on the back face only; the front is the print bed
 
-# Blade centre, measured from the horn face down the roll axis. 145 mm puts it
-# where the jaw-mounted paddle had it (144.9 mm from the wrist_roll origin), so
-# the arm's reach and every strike pose planned against it carry over. Shorten
-# it for a lighter, faster, shorter-reaching paddle; nothing else has to change.
-BLADE_CX = 145.0
+# -- the wrist bracket. `wrist_roll_pitch_so101_v2` reaches 4.73 mm past the
+#    horn face, at 14.1 mm or more from the roll axis. wrist_roll sweeps the
+#    paddle through +/-157 deg, so anything of the paddle outside that radius has
+#    to stay deeper than that, at every roll angle. `build()` checks it.
+WRIST_BRACKET_DEPTH = 4.73
+WRIST_BRACKET_R = 14.1
+WRIST_CLEARANCE = 1.0
+
+# The blade as close to the horn as the bracket allows: no stick. Its rim
+# starts BLADE_GAP past the hub, which puts it 1.3 mm deeper than the bracket.
+# That is the shortest lever arm there is - the blade centre is 61 mm from the
+# horn face. The jaw-mounted paddle had it at 145.
+BLADE_GAP = 3.0
+BLADE_CX = HUB_THICK + BLADE_GAP + 0.5 * BLADE_DIA
 
 # -- the rubber sheet. Not modelled as a solid: it is bought, not printed.
 RUBBER_THICK = 1.2  # a thin pips-out sheet, no sponge
@@ -123,13 +139,15 @@ GROOVE_INSET = 3.5  # from the rim, so the rubber is trimmed 3.5 mm inside it
 GROOVE_WIDTH = 1.0
 GROOVE_DEPTH = 0.6
 
-# -- the neck: a flat web in the blade plane, plus a rib on its back
-NECK_WIDTH = 20.0
+# -- what is left of the neck: a short gusset from hub to blade. A flat web in
+#    the blade plane, narrow enough to stay inside WRIST_BRACKET_R where it leaves
+#    the hub, plus a rib on its back. Both pass between the four screw axes.
+NECK_WIDTH = 12.0
 NECK_THICK = 4.0
-NECK_INTO_BLADE = 6.0  # how far the web runs under the blade
+NECK_INTO_BLADE = 20.0  # how far the web runs under the blade
 RIB_WIDTH = 3.0
 RIB_TOP = 9.0  # rib height at the hub, from the bed; it tapers into the blade
-RIB_INTO_BLADE = 15.0
+RIB_INTO_BLADE = 25.0
 
 # A screwdriver has to reach each screw head straight down the screw's axis.
 DRIVER_DIA = 5.0
@@ -173,6 +191,19 @@ def horn_holes() -> list[tuple[float, float]]:
     return out
 
 
+def teardrop(r: float):
+    """A circle of radius r on the roll axis, standing on the bed on a 45 deg
+    foot. The flanks meet the circle tangentially, so it prints without
+    supports; and unlike a square foot its corners stay close to the axis,
+    inside WRIST_BRACKET_R."""
+    t = r / math.sqrt(2.0)
+    ty, tz = t, AXIS_Z - t  # the 45 deg tangent point
+    half = ty - tz  # the flank z - tz = y - ty reaches the bed here
+    return Pos(0, AXIS_Z) * Circle(r) + Polygon(
+        (-half, 0.0), (half, 0.0), (ty, tz), (0.0, AXIS_Z), (-ty, tz), align=None
+    )
+
+
 NECK_X1 = BLADE_CX - BLADE_R + NECK_INTO_BLADE
 RIB_X1 = BLADE_CX - BLADE_R + RIB_INTO_BLADE
 
@@ -186,19 +217,12 @@ def build() -> Part:
     """The paddle as one build123d solid, in the paddle frame, in millimetres."""
     blade = extrude(Pos(BLADE_CX, 0) * Circle(BLADE_R), amount=BLADE_THICK)
 
-    # The hub: a round plate on the roll axis, with straight sides down to the
-    # bed so it stands on a flat edge instead of a tangent point.
-    hub_profile = Pos(0, AXIS_Z) * Circle(HUB_R) + Pos(0, 0.5 * AXIS_Z) * Rectangle(
-        2 * HUB_R, AXIS_Z
-    )
-    hub = extrude(Plane.YZ * hub_profile, amount=HUB_THICK)
+    # The hub: a round plate on the roll axis, standing on a teardrop foot.
+    hub = extrude(Plane.YZ * teardrop(HUB_R), amount=HUB_THICK)
 
     # The lip that locates the horn disc. Filled down to the bed under the horn,
     # so it has no overhang of its own, and cut open where the jaw's is.
-    lip_profile = (
-        Pos(0, AXIS_Z) * Circle(HORN_LIP_R[1])
-        + Pos(0, 0.5 * AXIS_Z) * Rectangle(2 * HORN_LIP_R[1], AXIS_Z)
-    ) - Pos(0, AXIS_Z) * Circle(HORN_LIP_R[0])
+    lip_profile = teardrop(HORN_LIP_R[1]) - Pos(0, AXIS_Z) * Circle(HORN_LIP_R[0])
     keep = Pos(-HORN_LIP_OPEN_X - 50.0, AXIS_Z) * Rectangle(100.0, 100.0)  # y <= -x_open
     lip = extrude(Plane.YZ.offset(-HORN_LIP_HEIGHT) * (lip_profile & keep), amount=HORN_LIP_HEIGHT)
 
@@ -256,7 +280,29 @@ def build() -> Part:
         print(f"  (rim chamfer skipped: {exc})")
 
     check_driver_access(part)
+    check_wrist_clearance(part)
     return part
+
+
+def check_wrist_clearance(part: Part) -> None:
+    """Nothing outside WRIST_BRACKET_R may sit within the bracket's depth.
+
+    Checked as a solid: everything from the horn face to the bracket depth plus
+    clearance, minus a cylinder of WRIST_BRACKET_R on the roll axis, must be
+    empty - because wrist_roll will carry whatever is left round into it.
+    """
+    depth = WRIST_BRACKET_DEPTH + WRIST_CLEARANCE
+    slab = extrude(
+        Plane.YZ.offset(-HORN_LIP_HEIGHT) * Pos(0, AXIS_Z) * Rectangle(400.0, 400.0),
+        amount=HORN_LIP_HEIGHT + depth,
+    )
+    core = extrude(
+        Plane.YZ.offset(-HORN_LIP_HEIGHT) * Pos(0, AXIS_Z) * Circle(WRIST_BRACKET_R),
+        amount=HORN_LIP_HEIGHT + depth,
+    )
+    clash = (part & (slab - core)).volume
+    if clash > 1e-6:
+        raise ValueError(f"{clash:.2f} mm^3 of paddle would sweep into the wrist bracket")
 
 
 def check_driver_access(part: Part) -> None:
@@ -369,6 +415,7 @@ def main() -> int:
             "hub_thick_mm": HUB_THICK,
             "hub_r_mm": HUB_R,
             "horn_holes_yz_mm": [list(h) for h in horn_holes()],
+            "blade_gap_mm": BLADE_GAP,
             "neck_x_mm": [HUB_THICK, NECK_X1],
             "neck_width_mm": NECK_WIDTH,
             "neck_thick_mm": NECK_THICK,

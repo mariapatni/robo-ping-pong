@@ -66,12 +66,12 @@ GRIPPER_ACTUATOR = "gripper"
 
 MESH_PATH = Path(__file__).resolve().parent / "models" / "paddle" / "paddle.stl"
 
-# sim.arm.HOME is not safe with a paddle on. It parks the gripper frame 84 mm
-# above the table, which was ample for a bare tip but puts the rim of a 55 mm
-# blade 7.5 mm THROUGH the surface. This pose clears it by 67 mm and leaves the
-# face at z = 0.12, the middle of the strike band, blade vertical. Same joint
-# order as ARM_JOINTS.
-PADDLE_HOME = np.array([0.0, -0.611, 0.087, 1.571, 0.0])
+# sim.arm.HOME is not safe with a paddle on: it was chosen for a bare tip. This
+# pose puts the face at (0.244, -0.014, 0.120) - the middle of the strike band,
+# where the jaw-mounted paddle used to put it - blade vertical, rim 65 mm clear
+# of the table. Solved with sim.pose.solve_face_pose. Same joint order as
+# ARM_JOINTS.
+PADDLE_HOME = np.array([0.0, -0.787, 1.372, -0.374, 0.0])
 
 
 @dataclass(frozen=True)
@@ -86,29 +86,29 @@ class PaddleConfig:
     # -- blade, from cad/paddle.py -------------------------------------------
     blade_diameter: float = 0.110
     blade_thickness: float = 0.0024
-    blade_centre_x: float = 0.145  # in the paddle frame: down the roll axis
+    blade_centre_x: float = 0.061  # in the paddle frame: down the roll axis
     rubber_thickness: float = 0.0012
     rubber_radius: float = 0.0505  # the disc inside the trim groove
 
     # -- mass properties of the print, about its own centre of mass ----------
-    plastic_mass: float = 0.039529
-    plastic_com: tuple[float, float, float] = (0.113665, -0.000024, 0.001975)
+    plastic_mass: float = 0.030514
+    plastic_com: tuple[float, float, float] = (0.056170, -0.000019, 0.001906)
     # MuJoCo fullinertia order: ixx, iyy, izz, ixy, ixz, iyz.
     plastic_inertia: tuple[float, float, float, float, float, float] = (
-        2.15555e-05,
-        1.239745e-04,
-        1.448883e-04,
-        -1.0984e-07,
-        2.99144e-06,
-        6.4e-09,
+        2.121832e-05,
+        2.878993e-05,
+        4.940780e-05,
+        -3.312046e-08,
+        1.153635e-06,
+        5.985850e-09,
     )
     rubber_mass: float = 0.013941
 
     # -- the hub, neck and rib, as boxes for collision -----------------------
     hub_thickness: float = 0.003
     hub_radius: float = 0.0125
-    neck_x: tuple[float, float] = (0.003, 0.096)
-    neck_width: float = 0.020
+    neck_x: tuple[float, float] = (0.003, 0.026)
+    neck_width: float = 0.012
     neck_thickness: float = 0.004
     rib_width: float = 0.003
     rib_top: float = 0.009  # at the hub; the collision box keeps it full length

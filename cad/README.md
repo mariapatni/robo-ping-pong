@@ -10,9 +10,10 @@ out of a mesh.
 | tool | [build123d](https://build123d.readthedocs.io) 0.13 (Python, scriptable, no GUI, no licence) |
 | source | [`paddle.py`](paddle.py) - every dimension is a named constant at the top |
 | blade | 110 mm diameter, 2.4 mm thick |
-| mass | **39.5 g printed** in PLA (31.9 cm3), **+13.9 g** of rubber = **53.5 g** |
-| what wrist_roll carries | **55 g** (paddle + horn), down from **156 g** with the gripper and old paddle |
-| inertia about the wrist_roll axis | 3.72e-5 kg m2 |
+| mass | **30.5 g printed** in PLA (24.6 cm3), **+13.9 g** of rubber = **44.5 g** |
+| what wrist_roll carries | **46 g** (paddle + horn), down from **156 g** with the gripper and old paddle |
+| lever | blade centre **61 mm** from the horn face, down from 145 mm on the jaw |
+| inertia about the wrist_roll axis | 3.59e-5 kg m2 |
 | print | face-down, flat on the bed, **no supports** |
 | fasteners | the **4x M3 x 6** that held the gripper on, into the horn |
 | finish | painted matt black all over; the rubber is black too |
@@ -47,12 +48,12 @@ only two of them turn out to matter.
 
 *These numbers were worked out when the paddle bolted to the gripper's fixed jaw,
 and the masses below are from that version. The argument is about the blade, so
-it still holds. The horn-mounted paddle is heavier on its own (53.5 g, because
-its neck now does the jaw's job), but the arm carries 55 g beyond wrist_roll
-instead of 156 g.*
+it still holds. The horn-mounted paddle weighs about the same on its own
+(44.5 g), but the arm carries 46 g beyond wrist_roll instead of 156 g, at less
+than half the lever.*
 
 **Inertia about the wrist: not the constraint.** A 110 mm blade adds 3.86e-5
-kg m2 about the wrist_roll axis (3.72e-5 for the horn-mounted version). The STS3215's own reflected armature in the
+kg m2 about the wrist_roll axis (3.59e-5 for the horn-mounted version). The STS3215's own reflected armature in the
 vendored model is `armature="0.028"`, so the paddle is **0.14%** of what that
 joint is already accelerating. At 150 mm it would be 1.30e-4, still only 0.41%.
 Blade size is essentially free in wrist inertia, and any argument for a small
@@ -131,19 +132,48 @@ and re-run. Nothing else has to change.
 
 **The one constraint that shapes the part.** The screws go in from the paddle
 side, so every head needs a straight line back along the roll axis for a
-screwdriver. The neck therefore is not a solid bar down the middle. It is a 4 mm
-web lying in the blade's own plane, with a 3 mm rib on its back, and both pass
-*between* the four screw axes. `paddle.py` checks this on the solid: a Ø5 driver
-along each screw axis must not touch the part, or the build fails.
-`tests/test_paddle.py` repeats the check on the committed numbers.
+screwdriver. So the gusset joining hub to blade is not a solid block down the
+middle. It is a 4 mm web lying in the blade's own plane, with a 3 mm rib on its
+back, and both pass *between* the four screw axes. `paddle.py` checks this on
+the solid: a Ø5 driver along each screw axis must not touch the part, or the
+build fails. `tests/test_paddle.py` repeats the check on the committed numbers.
 
-**Where the blade is.** The face sits 12.5 mm off the roll axis on the
-wrist_roll link's -y side, and the blade centre is 145 mm down the axis from the
-horn. That is where the jaw-mounted paddle had it (12 mm and 144.9 mm), so the
-reach, `PADDLE_HOME` and the strike planning all carry over. The blade is now
-straight down the roll axis, though, not tilted 20 deg as it was on the jaw, so
-re-measure anything tuned to the exact old pose. `BLADE_CX` shortens it. That
-gives a lighter, quicker paddle with less reach, and nothing else has to change.
+That check covers the screwdriver's *shaft*. Its handle is another matter for
+the two screws on the blade side of the axis: they sit 5 mm above the blade's
+back, so a normal handle hits the blade. Drive those two with a long-shaft
+driver (120 mm or more, so the handle is past the rim) or a ball-end key. The
+other two take any driver.
+
+**There is no stick.** The blade sits as close to the horn as the wrist allows.
+The bracket that holds the wrist_roll servo (`wrist_roll_pitch_so101_v2`)
+reaches 4.7 mm past the horn face, at 14.1 mm or more from the roll axis. Because
+wrist_roll swings the paddle through +/-157 deg, nothing of the paddle outside
+that radius may sit within that depth at any roll angle. So:
+
+- the blade's rim starts 6 mm from the horn face (`BLADE_GAP`, 1.3 mm deeper than
+  the bracket), and the blade centre is 61 mm from it;
+- the hub and lip stand on 45 deg teardrop feet rather than square ones, so their
+  corners stay inside 14 mm;
+- the gusset is 12 mm wide where it leaves the hub.
+
+`paddle.py` checks this on the solid too, and fails the build if anything strays
+into the bracket's swept volume. Note that MuJoCo cannot catch this one: it does
+not collide a link with its parent, so the sim would happily let the two
+overlap.
+
+**What the shorter lever buys, and costs.** The paddle's first moment about the
+horn drops from 6.5 to 2.6 g m, which is what wrist_flex has to hold up against
+gravity and swing. The cost is reach: measured over the face with
+`sim.reach.reach_map`, the deepest the face gets across the strike band falls
+from x = 0.526 m (73.4% of the arm's half) on the jaw-mounted paddle to
+**x = 0.442 m (58.5%)**. That is less than the bare gripper frame's 0.480 m
+(66.6%), because the face now sits beside the wrist instead of beyond it. If that
+turns out to matter, `BLADE_GAP` buys reach back at about 1 mm per mm.
+
+The face sits 12.5 mm off the roll axis on the wrist_roll link's -y side, and
+the blade runs straight down the roll axis, not tilted 20 deg as it was on the
+jaw. `PADDLE_HOME` is re-solved for this geometry. Re-measure anything tuned to
+the old pose.
 
 **Clocking.** Four holes at 90 deg mean it fits the horn four ways. Fit it so the
 rubber faces the same way the old paddle's did. Then re-run the LeRobot
@@ -159,22 +189,22 @@ not a single overhang and no supports are needed.
 
 | setting | value | why |
 |---|---|---|
-| material | PLA | PETG if you keep cracking the neck; it is ~4% heavier |
+| material | PLA | PETG if you keep cracking the gusset; it is ~4% heavier |
 | nozzle / layer height | 0.4 mm / 0.2 mm | 0.15 mm if you want a nicer glue face |
 | walls (perimeters) | **4** | 1.6 mm of the 2.4 mm blade is wall; this is what makes a 2.4 mm disc stiff |
 | top / bottom layers | 4 / 4 | at 0.2 mm the blade is 12 layers, so it comes out effectively solid |
-| infill | 40% gyroid | only the hub, rib and neck have any interior at all |
+| infill | 40% gyroid | only the hub, rib and gusset have any interior at all |
 | brim / raft | none | a 110 mm disc on the bed needs no help |
 | supports | **none** | |
 
 Print it on a smooth bed (PEI or glass). The first layer is the surface you are
 going to glue rubber to.
 
-Expect about 32 cm3, ~13 m of 1.75 mm filament, and 39.5 g.
+Expect about 25 cm3, ~10 m of 1.75 mm filament, and 30.5 g.
 
-The hub is a vertical plate standing on its own flat bottom edge, with straight
-sides and a round top. Its screw holes are horizontal, which every slicer prints
-without supports.
+The hub is a vertical plate standing on a teardrop foot: 45 deg flanks running
+tangentially into its round top. Its screw holes are horizontal, which every
+slicer prints without supports.
 
 ### Painting it black
 
