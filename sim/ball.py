@@ -32,6 +32,11 @@ def add_ball(spec: mujoco.MjSpec, cfg: BallConfig, pos=(0.0, 0.0, 0.5)) -> mujoc
     The mass is set explicitly rather than via density: a 2.7 g hollow ball is
     nothing like a solid 40 mm sphere of anything, and getting the mass wrong
     would make both the drag and the bounce wrong.
+
+    The inertia is a thin shell's, 2/3 m r^2, not the solid sphere's 2/5 m r^2
+    MuJoCo assumes by default. A real ball is ~1.7x harder to spin up than the
+    solid one, which decides how much spin paddle friction puts on it in an
+    off-centre or angled hit, and so how it comes off the rubber.
     """
     body = spec.worldbody.add_body(name=BALL_BODY, pos=list(pos))
     body.add_freejoint(name=BALL_BODY)
@@ -40,6 +45,7 @@ def add_ball(spec: mujoco.MjSpec, cfg: BallConfig, pos=(0.0, 0.0, 0.5)) -> mujoc
         type=mujoco.mjtGeom.mjGEOM_SPHERE,
         size=[cfg.radius, 0.0, 0.0],
         mass=cfg.mass,
+        typeinertia=mujoco.mjtGeomInertia.mjINERTIA_SHELL,
         rgba=[1.0, 0.45, 0.05, 1.0],
         condim=3,
     )

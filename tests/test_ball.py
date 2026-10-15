@@ -10,11 +10,12 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import mujoco
 import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sim.ball import Launch, drag_force, drag_free_landing, sample_launch  # noqa: E402
+from sim.ball import BALL_BODY, Launch, drag_force, drag_free_landing, sample_launch  # noqa: E402
 from sim.config import GRAVITY, BallConfig, EnvConfig  # noqa: E402
 from sim.env import PingPongEnv  # noqa: E402
 from sim.reach import reach_map  # noqa: E402
@@ -274,3 +275,12 @@ def test_feeds_arrive_inside_the_arms_reach(seed):
         if p[2] < -0.1:
             break
     assert arrived, "feed never entered the arm's strike zone"
+
+
+def test_ball_is_a_hollow_shell_not_a_solid_sphere(env):
+    """2/3 m r^2, not MuJoCo's solid-sphere default of 2/5 m r^2."""
+    m = env.model
+    body = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, BALL_BODY)
+    mass, r = m.body_mass[body], env.cfg.ball.radius
+    assert mass == pytest.approx(0.0027)
+    assert np.allclose(m.body_inertia[body], 2.0 / 3.0 * mass * r * r, rtol=1e-6)
