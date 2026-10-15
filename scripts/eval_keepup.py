@@ -60,6 +60,7 @@ def main(argv=None) -> int:
     p.add_argument("--video-episodes", type=int, default=3)
     p.add_argument("--size", type=int, nargs=2, default=(960, 720))
     p.add_argument("--randomize", action="store_true", help="evaluate in the randomised world")
+    p.add_argument("--json", type=Path, default=None, help="also write every episode's result here")
     p.add_argument("--episode-s", type=float, default=None,
                    help="time limit per episode; long limits measure how long it really lasts")
     args = p.parse_args(argv)
@@ -127,6 +128,11 @@ def main(argv=None) -> int:
     for cause, n in causes.most_common():
         print(f"  {cause:<12} {n:>3}  ({100 * n / args.episodes:.0f}%)")
 
+    if args.json:
+        import json
+
+        args.json.write_text(json.dumps([{"seconds": t, "bounces": int(b), "cause": c, "spawn_dist": d}
+                                         for t, b, c, d in zip(secs, bounces, ends, spawn)]))
     if args.video:
         args.video.parent.mkdir(parents=True, exist_ok=True)
         imageio.mimsave(args.video, frames, fps=env.metadata["render_fps"], macro_block_size=1)
