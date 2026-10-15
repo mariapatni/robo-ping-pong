@@ -104,11 +104,68 @@ tests/test_arm.py   it reaches what it is told, and respects its limits
 tests/test_ball.py  it falls, bounces to spec, and is slowed by air
 tests/test_paddle.py  the gripper is off, the paddle is on the horn, rigid, and returns the ball
 tests/test_scene.py the wood, the markers, the net, and the camera model
+sim/keepup.py       the keep-up task: bounce the ball on the paddle (gymnasium env)
+scripts/train_keepup.py  train the keep-up policy with PPO -> policies/keepup/<run>/
+scripts/eval_keepup.py   score it, break down why episodes end, render a video
+tests/test_keepup.py only real bounces score, and the arm stays out of the table
 ```
 
 The vendored model is never edited. Everything this project adds to the world -
 the table, the ball, the finer timestep - goes through the `modify` hook on
 `Arm`, which is handed the `MjSpec` before compile.
+
+## The keep-up policy
+
+A separate, smaller policy from the rally/return one in `docs/reward-design.md`:
+a ball is dropped anywhere the arm can get under in time, and the arm catches
+it, keeps it bouncing, walks it back to the centre of its workspace and bounces
+it straight up there. Same arm, paddle, contact model, 30 Hz rate and table
+guard as the rally; its own env (`sim/keepup.py`), reward and checkpoints
+(`policies/keepup/<run>/`).
+
+```bash
+uv pip install --python .venv/bin/python -r requirements-train.txt
+.venv/bin/python scripts/train_keepup.py --randomize --run v5 --steps 2e7
+.venv/bin/mjpython scripts/watch_keepup.py --run v5 --randomize    # watch it learn, live
+.venv/bin/python scripts/eval_keepup.py --run v5 --randomize --video out/keepup_v5.mp4
+.venv/bin/python scripts/eval_keepup.py --baseline zero --randomize   # scores 0
+```
+
+- **Observes** 33 numbers: joints and their commanded targets, joint speeds,
+  the ball relative to the face and its velocity, the face normal, where the
+  face is relative to the centre, its last action, and the control period.
+- **Acts** by moving the 5 joint targets at up to 4.5 rad/s, the STS3215's top
+  speed, through `TableGuard`.
+- **Is scored** per second of good flight - apex 20-35 cm, leaving towards the
+  centre and straight up once there, landing near the centre - plus a catch
+  bonus and 0.5/s for keeping the ball alive. A bounce counts only after the
+  ball rose 4 cm, so buzzing a resting ball earns nothing.
+- **Trains** on a skill-gated curriculum: every drop at the centre first, then
+  rings 6 cm wider, each unlocked only once drops from that ring average 12
+  bounces. Drops are filtered to those the arm can reach before they land.
+- **Is randomised** every episode: ball mass and drag, paddle restitution (and
+  again on every hit, deader towards the rim), a 2 deg scatter on every takeoff,
+  servo gains, the control rate (27-33 Hz), sensor noise and one frame of lag,
+  and sideways nudges in flight.
+
+| run | what changed | result |
+|---|---|---|
+| v1 | first policy; old paddle; drops at the centre | 62.8 bounces, but an 8 cm dribble: the score paid per bounce |
+| v2 | physics and sensor randomisation | a 60 Hz specialist: 58.6 bounces at 60 Hz, 5.6 at 30 |
+| v3 | new paddle; ~30 Hz; scored per second of good flight; drops anywhere; curriculum | 34.8 bounces, half of episodes the full 20 s; stuck where drops were unreachable |
+| v4 | drops only where catchable | training |
+
+### Next: v5
+
+- **Hollow-shell ball inertia** (2/3 m r^2), now in `sim/ball.py`. v1-v4 trained
+  with MuJoCo's solid-sphere default, ~1.7x too easy to spin.
+- **White paddle**, as it actually printed. Visual only: the policy reads the
+  ball's state, not images, but videos and the future camera stack see white.
+- **Weigh the real balls** on a 0.01 g scale and centre the mass range on them;
+  brands run 2.67-2.77 g, so the +/-10% randomisation can tighten to ~+/-3%.
+- **Measure the real bounces**: film drops from a known height onto the table
+  and onto the printed paddle, and set restitution from them. The paddle's
+  0.85 is the most important unmeasured number in keep-up.
 
 ## The world
 

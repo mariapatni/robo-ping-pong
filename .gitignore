@@ -8,3 +8,6 @@ out/
 # installed to run the simulator or to send the paddle to a printer.
 !cad/out/
 MUJOCO_LOG.TXT
+
+# Intermediate training checkpoints; the final policy.zip of a run is small and may be committed.
+policies/**/ckpt/

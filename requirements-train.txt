@@ -1,0 +1,5 @@
+# Training: on top of requirements.txt.
+#   uv pip install --python .venv/bin/python -r requirements-train.txt
+torch>=2.4
+gymnasium>=1.0
+stable-baselines3>=2.4
