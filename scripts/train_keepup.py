@@ -49,6 +49,8 @@ def main(argv=None) -> int:
     p.add_argument("--resume", type=int, default=None,
                    help="continue this run from its checkpoint at this step count")
     p.add_argument("--start-stage", type=int, default=0, help="curriculum stage to start at")
+    p.add_argument("--max-stage", type=int, default=9,
+                   help="last curriculum stage; past 5 almost nothing is catchable in time")
     args = p.parse_args(argv)
 
     import torch
@@ -126,10 +128,11 @@ def main(argv=None) -> int:
         bar, window = 15.0, 200  # stage 0: all episodes, all at the centre
         ring_bar, ring_window = 12.0, 100  # later stages: newest-ring episodes only
 
-        def __init__(self, start_stage: int = 0):
+        def __init__(self, start_stage: int = 0, max_stage: int = 9):
             super().__init__()
             from collections import deque
 
+            self.stages = max_stage
             self.stage, self.history = start_stage, []
             self.recent = deque(maxlen=self.window)
 
@@ -196,7 +199,7 @@ def main(argv=None) -> int:
     if args.resume:
         model = PPO.load(out / "ckpt" / f"keepup_{args.resume}_steps", env=venv, device="cpu")
         print(f"resumed {args.run} from {args.resume:,} steps", flush=True)
-    callbacks = [Bounces(), ckpt] + ([Curriculum(args.start_stage)] if args.randomize else [])
+    callbacks = [Bounces(), ckpt] + ([Curriculum(args.start_stage, args.max_stage)] if args.randomize else [])
     model.learn(total_timesteps=int(args.steps), callback=callbacks, progress_bar=False,
                 reset_num_timesteps=not args.resume)
 
