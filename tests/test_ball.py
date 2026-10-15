@@ -284,3 +284,19 @@ def test_ball_is_a_hollow_shell_not_a_solid_sphere(env):
     mass, r = m.body_mass[body], env.cfg.ball.radius
     assert mass == pytest.approx(0.0027)
     assert np.allclose(m.body_inertia[body], 2.0 / 3.0 * mass * r * r, rtol=1e-6)
+
+
+def test_the_fast_step_flies_the_ball_exactly_as_drag_force_says(env):
+    """PingPongEnv.step inlines drag on plain floats for speed. Over a launch
+    with bounces, it must track a step built on `drag_force` itself."""
+    env.reset()
+    env.set_ball((0.6, 0.0, 0.3), (-1.5, 0.3, 1.0))
+    ref = mujoco.MjData(env.model)
+    ref.qpos[:], ref.qvel[:] = env.data.qpos, env.data.qvel
+    k, b, a = env.cfg.ball.drag_k, env.ball_body, env.ball_dof_adr
+    for _ in range(2000):  # 1 s, through a bounce
+        env.step(1)
+        ref.ctrl[:] = env.data.ctrl
+        ref.xfrc_applied[b, :3] = drag_force(ref.qvel[a:a + 3], k)
+        mujoco.mj_step(env.model, ref)
+    assert np.allclose(env.data.qpos, ref.qpos, atol=1e-9)

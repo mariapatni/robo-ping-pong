@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 
 import numpy as np
 
@@ -124,9 +125,12 @@ class BallConfig:
     def area(self) -> float:
         return float(np.pi * self.radius**2)
 
-    @property
+    @cached_property
     def drag_k(self) -> float:
-        """Precomputed 0.5*rho*Cd*A so the step loop is one multiply."""
+        """Precomputed 0.5*rho*Cd*A so the step loop is one multiply.
+
+        Cached: the step loop reads it ~2,000 times a simulated second, and as a
+        plain property it recomputed the area every time."""
         return 0.5 * self.air_density * self.drag_coefficient * self.area
 
     @property
