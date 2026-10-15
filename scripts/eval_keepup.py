@@ -60,9 +60,13 @@ def main(argv=None) -> int:
     p.add_argument("--video-episodes", type=int, default=3)
     p.add_argument("--size", type=int, nargs=2, default=(960, 720))
     p.add_argument("--randomize", action="store_true", help="evaluate in the randomised world")
+    p.add_argument("--episode-s", type=float, default=None,
+                   help="time limit per episode; long limits measure how long it really lasts")
     args = p.parse_args(argv)
 
-    env = KeepUpEnv(KeepUpConfig.randomized() if args.randomize else None,
+    over = {} if args.episode_s is None else {"episode_s": args.episode_s}
+    cfg = KeepUpConfig.randomized(**over) if args.randomize else KeepUpConfig(**over)
+    env = KeepUpEnv(cfg,
                     render_size=tuple(args.size) if args.video else None)
     if args.baseline == "zero":
         act, label = (lambda o: np.zeros(5)), "hold level (zero action)"
@@ -71,7 +75,7 @@ def main(argv=None) -> int:
     else:
         act, label = load_policy(args.run, args.ckpt)
 
-    bounces, causes, frames, apex, angle, home, start, spawn, ends = [], Counter(), [], [], [], [], [], [], []
+    bounces, causes, frames, apex, angle, home, start, spawn, ends, secs = [], Counter(), [], [], [], [], [], [], [], []
     for ep in range(args.episodes):
         obs, _ = env.reset(seed=args.seed + ep)
         record = args.video is not None and ep < args.video_episodes
@@ -84,6 +88,7 @@ def main(argv=None) -> int:
         if record and frames:
             frames.extend([frames[-1]] * 15)  # a half-second hold between episodes
         bounces.append(info["bounces"])
+        secs.append(env.t * env.dt)
         causes[info["cause"]] += 1
         spawn.append(info.get("spawn_dist", 0.0))
         ends.append(info["cause"])
@@ -98,6 +103,12 @@ def main(argv=None) -> int:
     world = "randomised world" if args.randomize else "fixed world"
     print(f"{label}: {args.episodes} episodes, {world}")
     print(f"  bounces  mean {b.mean():.1f}  median {np.median(b):.0f}  min {b.min()}  max {b.max()}")
+    T = np.array(secs)
+    limit = env.cfg.episode_s
+    print(f"  lasted   median {np.median(T):.1f} s, mean {T.mean():.1f} s  (limit {limit:.0f} s)")
+    for mark in (20, 60, 120, 300):
+        if mark <= limit:
+            print(f"           {mark:>4.0f} s or more: {np.mean(T >= mark - 1e-6):4.0%}")
     if apex:
         print(f"  apex     mean {100 * np.mean(apex):.1f} cm above the face  (target band 20-35)")
         print(f"  takeoff  mean {np.mean(angle):.1f} deg off vertical")
@@ -112,7 +123,7 @@ def main(argv=None) -> int:
             if m.any():
                 full = np.mean([causes_i == "timeout" for causes_i in np.array(ends)[m]])
                 print(f"    {100 * lo:4.0f}-{100 * hi:<3.0f} cm  n={m.sum():3d}  bounces mean {bo[m].mean():5.1f}"
-                      f"  median {np.median(bo[m]):4.0f}  full 20 s {100 * full:3.0f}%")
+                      f"  median {np.median(bo[m]):4.0f}  lasted to the limit {100 * full:3.0f}%")
     for cause, n in causes.most_common():
         print(f"  {cause:<12} {n:>3}  ({100 * n / args.episodes:.0f}%)")
 

@@ -27,11 +27,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-def make_env(rank: int, seed: int, randomize: bool = False):
+def make_env(rank: int, seed: int, randomize: bool = False, episode_s: float | None = None):
     def thunk():
         from sim.keepup import KeepUpConfig, KeepUpEnv
 
-        env = KeepUpEnv(KeepUpConfig.randomized() if randomize else None)
+        over = {} if episode_s is None else {"episode_s": episode_s}
+        env = KeepUpEnv(KeepUpConfig.randomized(**over) if randomize else KeepUpConfig(**over))
         env.reset(seed=seed + rank)
         return env
 
@@ -49,6 +50,10 @@ def main(argv=None) -> int:
     p.add_argument("--resume", type=int, default=None,
                    help="continue this run from its checkpoint at this step count")
     p.add_argument("--start-stage", type=int, default=0, help="curriculum stage to start at")
+    p.add_argument("--episode-s", type=float, default=None,
+                   help="episode time limit; longer practises the drift that ends long rallies")
+    p.add_argument("--gamma", type=float, default=0.99,
+                   help="discount; 0.99 looks ~3 s ahead at 30 Hz, 0.995 ~7 s")
     p.add_argument("--max-stage", type=int, default=9,
                    help="last curriculum stage; past 5 almost nothing is catchable in time")
     args = p.parse_args(argv)
@@ -62,7 +67,7 @@ def main(argv=None) -> int:
     out = ROOT / "policies" / "keepup" / args.run
     out.mkdir(parents=True, exist_ok=True)
 
-    venv = SubprocVecEnv([make_env(i, args.seed, args.randomize) for i in range(args.envs)])
+    venv = SubprocVecEnv([make_env(i, args.seed, args.randomize, args.episode_s) for i in range(args.envs)])
     venv = VecMonitor(venv, info_keywords=("bounces",))
     # Observations span joint angles in rad and ball velocities in m/s, so
     # they are normalised. Rewards are not: a bounce is worth 1 and that unit
@@ -181,7 +186,7 @@ def main(argv=None) -> int:
         batch_size=2048,
         n_epochs=10,
         learning_rate=3e-4,
-        gamma=0.99,  # ~3 s horizon at 30 Hz: several bounces ahead
+        gamma=args.gamma,
         gae_lambda=0.95,
         clip_range=0.2,
         ent_coef=0.0,
@@ -198,6 +203,7 @@ def main(argv=None) -> int:
                               name_prefix="keepup", save_vecnormalize=True)
     if args.resume:
         model = PPO.load(out / "ckpt" / f"keepup_{args.resume}_steps", env=venv, device="cpu")
+        model.gamma = model.rollout_buffer.gamma = args.gamma  # a resume may lengthen the horizon
         print(f"resumed {args.run} from {args.resume:,} steps", flush=True)
     callbacks = [Bounces(), ckpt] + ([Curriculum(args.start_stage, args.max_stage)] if args.randomize else [])
     model.learn(total_timesteps=int(args.steps), callback=callbacks, progress_bar=False,
