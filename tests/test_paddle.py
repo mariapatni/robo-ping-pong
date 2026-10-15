@@ -215,10 +215,10 @@ def test_nothing_sweeps_into_the_wrist_bracket():
     assert corner < bracket_r
 
 
-def test_it_is_painted_black(arm):
+def test_it_is_white_like_the_print(arm):
     for suffix in ("_visual", "_rubber"):
         gid = mujoco.mj_name2id(arm.model, mujoco.mjtObj.mjOBJ_GEOM, PADDLE_BODY + suffix)
-        assert arm.model.geom_rgba[gid][:3].max() < 0.1
+        assert arm.model.geom_rgba[gid][:3].min() > 0.8
 
 
 def test_the_sim_mesh_is_small_enough_to_ship():
