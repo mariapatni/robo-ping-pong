@@ -54,6 +54,12 @@ def main(argv=None) -> int:
                    help="episode time limit; longer practises the drift that ends long rallies")
     p.add_argument("--gamma", type=float, default=0.99,
                    help="discount; 0.99 looks ~3 s ahead at 30 Hz, 0.995 ~7 s")
+    p.add_argument("--lr", type=float, default=3e-4, help="learning rate at the start of this run")
+    p.add_argument("--lr-end", type=float, default=0.0,
+                   help="learning rate at the end; tapering lets PPO settle instead of wobbling")
+    p.add_argument("--eval-every", type=float, default=2e6, help="steps between keep-the-best evaluations")
+    p.add_argument("--eval-episodes", type=int, default=48)
+    p.add_argument("--eval-limit-s", type=float, default=300.0, help="time limit of an evaluation episode")
     p.add_argument("--max-stage", type=int, default=9,
                    help="last curriculum stage; past 5 almost nothing is catchable in time")
     args = p.parse_args(argv)
@@ -61,6 +67,7 @@ def main(argv=None) -> int:
     import torch
     from stable_baselines3 import PPO
     from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
+    from stable_baselines3.common.evaluation import evaluate_policy
     from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
 
     torch.set_num_threads(1)  # the sim is the bottleneck; keep torch off its cores
@@ -179,13 +186,80 @@ def main(argv=None) -> int:
                  "spawn_scale_prev": prev, "bar_bounces": self.bar if self.stage == 0 else self.ring_bar,
                  "history": self.history}, indent=2))
 
+    class KeepBest(BaseCallback):
+        """Score the policy every `--eval-every` steps and keep the best one.
+
+        v7 showed why: with a fixed learning rate it plateaued and wobbled -
+        checkpoints between 64 and 136 s median survival - and the final one
+        landed on a dip. The last policy a run writes is not its best.
+
+        Every evaluation plays the same `--eval-episodes` drops (fixed seeds),
+        deterministically, on the full task with `--eval-limit-s` episodes, in
+        its own environments so training's curriculum and statistics are not
+        disturbed. The score is mean survival time. The best policy so far is
+        saved as best.zip with its observation statistics, and every result is
+        logged to best.json.
+        """
+
+        def __init__(self):
+            super().__init__()
+            self.last, self.best, self.history = -np.inf, -np.inf, []
+
+        def _on_training_start(self) -> None:
+            env = SubprocVecEnv([make_env(1000 + i, 0, args.randomize, args.eval_limit_s)
+                                 for i in range(args.envs)])
+            self.eval_env = VecNormalize(env, training=False, norm_obs=True, norm_reward=False, clip_obs=10.0)
+
+        def _on_step(self) -> bool:
+            if self.num_timesteps - self.last >= args.eval_every:
+                self.last = self.num_timesteps
+                self._evaluate()
+            return True
+
+        def _on_training_end(self) -> None:
+            self._evaluate()
+            self.eval_env.close()
+
+        def _evaluate(self) -> None:
+            import copy
+
+            self.eval_env.obs_rms = copy.deepcopy(venv.obs_rms)  # see what training sees
+            self.eval_env.seed(12345)  # the same drops every time
+            _, lengths = evaluate_policy(self.model, self.eval_env, n_eval_episodes=args.eval_episodes,
+                                         deterministic=True, return_episode_rewards=True)
+            secs = np.array(lengths) / 30.0  # ~30 decisions a second
+            full = float(np.mean(secs >= 0.98 * args.eval_limit_s))
+            rec = {"timesteps": int(self.num_timesteps), "mean_s": round(float(secs.mean()), 1),
+                   "median_s": round(float(np.median(secs)), 1), "full": round(full, 3)}
+            self.logger.record("keepup/eval_mean_s", rec["mean_s"])
+            self.logger.record("keepup/eval_median_s", rec["median_s"])
+            if rec["mean_s"] > self.best:
+                self.best, rec["best"] = rec["mean_s"], True
+                self.model.save(out / "best")
+                venv.save(str(out / "best_vecnormalize.pkl"))
+            self.history.append(rec)
+            print(f"eval at {self.num_timesteps:,}: mean {rec['mean_s']} s, median {rec['median_s']} s, "
+                  f"full {100 * full:.0f}%" + ("  <- best" if rec.get("best") else ""), flush=True)
+            (out / "best.json").write_text(json.dumps({"best_mean_s": self.best, "history": self.history},
+                                                      indent=2))
+
+    def lr_schedule(start: int):
+        """Linear from --lr to --lr-end over THIS run's steps.
+
+        SB3 hands a schedule its progress over the whole step count, so a run
+        resumed at 40M steps of 60M would start the taper a third of the way
+        down. `p0` is that starting progress; this rescales from it.
+        """
+        p0 = args.steps / (start + args.steps)
+        return lambda p: args.lr_end + (args.lr - args.lr_end) * float(np.clip(p / p0, 0.0, 1.0))
+
     model = PPO(
         "MlpPolicy",
         venv,
         n_steps=1024,
         batch_size=2048,
         n_epochs=10,
-        learning_rate=3e-4,
+        learning_rate=lr_schedule(0),
         gamma=args.gamma,
         gae_lambda=0.95,
         clip_range=0.2,
@@ -204,8 +278,10 @@ def main(argv=None) -> int:
     if args.resume:
         model = PPO.load(out / "ckpt" / f"keepup_{args.resume}_steps", env=venv, device="cpu")
         model.gamma = model.rollout_buffer.gamma = args.gamma  # a resume may lengthen the horizon
+        model.learning_rate = lr_schedule(model.num_timesteps)
+        model._setup_lr_schedule()
         print(f"resumed {args.run} from {args.resume:,} steps", flush=True)
-    callbacks = [Bounces(), ckpt] + ([Curriculum(args.start_stage, args.max_stage)] if args.randomize else [])
+    callbacks = [Bounces(), ckpt, KeepBest()] + ([Curriculum(args.start_stage, args.max_stage)] if args.randomize else [])
     model.learn(total_timesteps=int(args.steps), callback=callbacks, progress_bar=False,
                 reset_num_timesteps=not args.resume)
 

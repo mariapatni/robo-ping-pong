@@ -33,7 +33,9 @@ def load_policy(run: str, ckpt: str | None):
     from stable_baselines3 import PPO
 
     d = ROOT / "policies" / "keepup" / run
-    if ckpt:  # a mid-training checkpoint, by step count
+    if ckpt == "best":  # the best policy a run's keep-the-best evaluations found
+        weights, stats = d / "best", d / "best_vecnormalize.pkl"
+    elif ckpt:  # a mid-training checkpoint, by step count
         weights, stats = d / "ckpt" / f"keepup_{ckpt}_steps", d / "ckpt" / f"keepup_vecnormalize_{ckpt}_steps.pkl"
     else:
         weights, stats = d / "policy", d / "vecnormalize.pkl"
@@ -52,7 +54,7 @@ def load_policy(run: str, ckpt: str | None):
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--run", default="v1")
-    p.add_argument("--ckpt", default=None, help="checkpoint step count, e.g. 1000000")
+    p.add_argument("--ckpt", default=None, help="checkpoint step count, e.g. 1000000, or 'best'")
     p.add_argument("--baseline", choices=["zero", "random"], default=None)
     p.add_argument("--episodes", type=int, default=50)
     p.add_argument("--seed", type=int, default=10_000, help="held out from training seeds")
