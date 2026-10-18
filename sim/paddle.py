@@ -137,12 +137,12 @@ class PaddleConfig:
     friction: tuple[float, float, float] = (0.9, 0.005, 0.0001)
     priority: int = 2
 
-    # White PLA, as it actually printed (it was meant to be black). The face
-    # is a shade greyer only so it can be told from the back in a render.
-    # Matters for vision, not for the policy: the cameras are monochrome, and
-    # an orange ball reads darker against white than it did against black.
-    rgba: tuple[float, float, float, float] = (0.93, 0.93, 0.92, 1.0)
-    face_rgba: tuple[float, float, float, float] = (0.85, 0.85, 0.84, 1.0)
+    # Blue. It printed white and was then coloured blue, so a white ball stands
+    # out against it - white on white was the hardest case for the camera.
+    # The face is a shade darker only so it can be told from the back in a
+    # render. Matters for vision, not for the policy, which never sees colour.
+    rgba: tuple[float, float, float, float] = (0.12, 0.32, 0.78, 1.0)
+    face_rgba: tuple[float, float, float, float] = (0.09, 0.26, 0.66, 1.0)
 
     # -- derived -------------------------------------------------------------
 
