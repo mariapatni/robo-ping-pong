@@ -9,6 +9,15 @@ Run it to regenerate every artefact the rest of the project consumes:
     sim/models/paddle/paddle.stl   coarse mesh, for MuJoCo's visual geom
     cad/out/paddle_props.json      volume, mass, centre of mass, inertia
 
+and, for printing only, the big paddle - the same hub on a 150 mm blade:
+
+    .venv/bin/python cad/paddle.py --big
+
+    cad/out/paddle_big.step, paddle_big.stl, paddle_big_props.json
+
+The big one does not touch the sim mesh or paddle_props.json: the sim, its
+tests and the policies are all built on the 110 mm blade.
+
 Nothing in sim/ imports build123d: the two meshes and the JSON are committed, so
 the simulator and its tests run without a CAD stack installed. `tests/
 test_paddle.py` checks the committed JSON against sim.paddle.PaddleConfig, which
@@ -67,6 +76,7 @@ supports.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from pathlib import Path
@@ -114,6 +124,7 @@ AXIS_Z = HUB_R
 # -- the blade. 110 mm is a deliberate 73% of a regulation blade; see cad/README.md
 #    for the inertia, torque, mass and table-clearance numbers behind it.
 BLADE_DIA = 110.0
+BIG_BLADE_DIA = 150.0  # `--big`: a regulation blade's width, round
 BLADE_THICK = 2.4
 BLADE_RIM_CHAMFER = 0.8  # on the back face only; the front is the print bed
 
@@ -384,20 +395,41 @@ def mass_properties(verts: np.ndarray, faces: np.ndarray, density: float) -> dic
 # =============================================================================
 
 
-def main() -> int:
+def set_blade(dia: float) -> None:
+    """Resize the blade, and everything placed off it. The hub, the horn
+    interface and the gap to the wrist bracket do not change."""
+    global BLADE_DIA, BLADE_R, BLADE_CX, NECK_X1, RIB_X1
+    BLADE_DIA = dia
+    BLADE_R = 0.5 * dia
+    BLADE_CX = HUB_THICK + BLADE_GAP + BLADE_R
+    NECK_X1 = BLADE_CX - BLADE_R + NECK_INTO_BLADE
+    RIB_X1 = BLADE_CX - BLADE_R + RIB_INTO_BLADE
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description="Build the paddle and export it.")
+    p.add_argument("--big", action="store_true", help=f"the {BIG_BLADE_DIA:.0f} mm blade, for printing only")
+    args = p.parse_args(argv)
+
+    name = "paddle"
+    if args.big:
+        set_blade(BIG_BLADE_DIA)
+        name = "paddle_big"
+
     OUT.mkdir(parents=True, exist_ok=True)
     SIM_MESH.parent.mkdir(parents=True, exist_ok=True)
 
     # One fresh solid per export: OCC caches a shape's triangulation, so a second
     # export off the same object silently reuses the first one's tolerance and the
     # "coarse" mesh comes out identical to the fine one.
-    export_step(build(), str(OUT / "paddle.step"))
+    export_step(build(), str(OUT / f"{name}.step"))
     export_stl(
-        build(), str(OUT / "paddle.stl"), tolerance=STL_TOL_FINE, angular_tolerance=STL_ANG_FINE
+        build(), str(OUT / f"{name}.stl"), tolerance=STL_TOL_FINE, angular_tolerance=STL_ANG_FINE
     )
-    export_stl(build(), str(SIM_MESH), tolerance=STL_TOL_SIM, angular_tolerance=STL_ANG_SIM)
+    if not args.big:
+        export_stl(build(), str(SIM_MESH), tolerance=STL_TOL_SIM, angular_tolerance=STL_ANG_SIM)
 
-    verts, faces = read_stl(OUT / "paddle.stl")
+    verts, faces = read_stl(OUT / f"{name}.stl")
     props = mass_properties(verts, faces, PLA_DENSITY)
 
     _, sim_faces = read_stl(SIM_MESH)
@@ -422,10 +454,11 @@ def main() -> int:
             "rib_width_mm": RIB_WIDTH,
             "rib_top_mm": RIB_TOP,
             "fine_triangles": int(faces.shape[0]),
-            "sim_triangles": int(sim_faces.shape[0]),
         }
     )
-    (OUT / "paddle_props.json").write_text(json.dumps(props, indent=2) + "\n")
+    if not args.big:
+        props["sim_triangles"] = int(sim_faces.shape[0])
+    (OUT / f"{name}_props.json").write_text(json.dumps(props, indent=2) + "\n")
 
     print(f"blade            {BLADE_DIA:.1f} mm dia x {BLADE_THICK:.1f} mm, centre x = {BLADE_CX:.1f}")
     print(f"horn screws (yz) {np.round(horn_holes(), 2).tolist()}")
@@ -433,8 +466,12 @@ def main() -> int:
     print(f"PLA mass         {props['mass_g']:.1f} g   (+ {rubber_mass:.1f} g of rubber)")
     print(f"centre of mass   {np.round(props['com_mm'], 2)} mm (paddle frame)")
     print(f"inertia (kg m^2) {np.array(props['inertia_kg_m2'])}")
-    print(f"triangles        {faces.shape[0]} fine, {sim_faces.shape[0]} for the sim")
-    print(f"wrote {OUT/'paddle.step'}, {OUT/'paddle.stl'}, {SIM_MESH}, {OUT/'paddle_props.json'}")
+    print(f"triangles        {faces.shape[0]} fine")
+    print(f"length           {BLADE_CX + BLADE_R + HORN_LIP_HEIGHT:.1f} mm, horn lip to blade tip")
+    wrote = [OUT / f"{name}.step", OUT / f"{name}.stl", OUT / f"{name}_props.json"]
+    if not args.big:
+        wrote.insert(2, SIM_MESH)
+    print("wrote " + ", ".join(str(w) for w in wrote))
     return 0
 
 

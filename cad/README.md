@@ -41,6 +41,35 @@ script, copy the four numbers it prints into `PaddleConfig`, run the tests.
     .venv/bin/python scripts/render_paddle.py        # rewrites the image above
 
 
+## The big paddle
+
+    .venv/bin/python cad/paddle.py --big
+
+writes `cad/out/paddle_big.{step,stl}` and `paddle_big_props.json`: the same hub,
+horn interface, gusset and 3 mm gap to the wrist bracket, on a **150 mm** blade
+(a regulation blade's width). Both build checks - screw access and the wrist
+bracket - pass on it too.
+
+| | 110 mm | 150 mm |
+|---|---|---|
+| mass, printed + rubber | 30.5 + 13.9 = **44.5 g** | 54.7 + 27.2 = **81.9 g** |
+| blade centre from the horn face | 61 mm | 81 mm |
+| length, lip to tip | 117 mm | 157 mm |
+
+It is **for printing only**. The sim, its tests and the trained policies all
+use the 110 mm blade, and `--big` leaves the sim mesh and `paddle_props.json`
+alone. Before running a policy with it on the real arm, know that:
+
+- it puts about 2.5x the 110's first moment on the wrist - roughly what the
+  gripper and the old jaw-mounted paddle did - so the wrist servos work harder;
+- the 110 already comes within 1.4 mm of the upper arm at the top of wrist_flex
+  (+95 deg, elbow folded), and the big blade reaches 20 mm further out, so keep
+  wrist_flex well off its upper limit;
+- the rim is 20 mm closer to the table at the same pose.
+
+It needs a bed at least 160 x 155 mm. Print and finish it exactly as below.
+
+
 ## Why 110 mm
 
 A regulation blade is about 150 mm across. Three things push back on that, and
