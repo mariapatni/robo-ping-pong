@@ -1,0 +1,11 @@
+{
+  "name": "facetime",
+  "backend": "avfoundation",
+  "device": "FaceTime HD Camera",
+  "width": 1280,
+  "height": 720,
+  "fps": 30.0,
+  "latency_s": null,
+  "calibration": null,
+  "notes": "MacBook Pro 13in M2 (Mac14,7) built-in camera. Modes 1280x720 and 640x480 only, 15-30 fps. Fixed focus; exposure and white balance automatic only (macOS exposes no manual or locked modes) and no lens intrinsics or field of view. Measured 24 fps at 1280x720 under indoor light: auto-exposure lengthens exposures and drops the rate - more light brings it back to 30. Calibrate at 1280x720 and run at that mode: 640x480 is a crop or rescale with different intrinsics."
+}

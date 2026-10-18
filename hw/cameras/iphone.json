@@ -1,0 +1,11 @@
+{
+  "name": "iphone",
+  "backend": "avfoundation",
+  "device": "Maria’s iPhone Camera",
+  "width": 1920,
+  "height": 1080,
+  "fps": 60.0,
+  "latency_s": null,
+  "calibration": null,
+  "notes": "iPhone 16 Pro (iPhone17,1) over Continuity Camera. Up to 1920x1440, 60 fps. Arrives over Wi-Fi as compressed video, so expect more and less steady latency than a wired camera; measure before relying on it. No exposure or focus control exposed to macOS."
+}
