@@ -97,8 +97,14 @@ class Randomization:
 
     # Disturbances: a sideways nudge to the ball in flight, standing in for
     # spin, air currents and everything else the v1 ball model leaves out.
-    push_rate_hz: float = 0.5
-    push_speed: float = 0.15  # one-sigma, m/s, horizontal
+    #
+    # A guess, and the one that decides how long a rally lasts. At first it was
+    # 0.5/s at 0.15 m/s; with it v6 lasted a median 24.5 s, without it 113 s,
+    # and in an otherwise calm world over half its rallies reached 5 minutes.
+    # That is stronger than still indoor air plausibly pushes a ball, so it is
+    # 3x weaker and rarer until filmed real bounces say how far balls wander.
+    push_rate_hz: float = 0.2
+    push_speed: float = 0.05  # one-sigma, m/s, horizontal
 
 
 @dataclass(frozen=True)
