@@ -108,6 +108,29 @@ sim/keepup.py       the keep-up task: bounce the ball on the paddle (gymnasium e
 scripts/train_keepup.py  train the keep-up policy with PPO -> policies/keepup/<run>/
 scripts/eval_keepup.py   score it, break down why episodes end, render a video
 tests/test_keepup.py only real bounces score, and the arm stays out of the table
+hw/feetech.py       the STS3215 bus protocol: read, write, sync read and write
+hw/so101.py         the real arm behind the sim's contract: five joint angles, in radians
+hw/rehome.py        find each joint's hard stops and centre its encoder on them
+hw/park.py, hw/unfold.py, hw/jog.py   fold to rest, rise from it, move named joints
+hw/joint_test.py    step each joint and measure how the real servo answers
+hw/mirror.py        play a policy's sim episode on the real arm (or a weak sim stand-in)
+hw/weak_arm.py      score a policy with its actuators weakened toward the real ones
+tests/test_hw.py    the hardware layer's arithmetic, with no arm attached
+hw/vision.py        the webcam's view of the ball: detect, place in the world, Kalman-filter
+hw/cam_calibrate.py place the webcam using the arm's blue paddle; fits joint offsets too
+hw/track.py         track the ball live (or on a clip), record raw clips
+hw/lighting_study.py  how the tracker holds up as the light changes
+hw/overlay.py       draw the sim arm over the webcam frame, to check both calibrations
+hw/ball_point.py    hold the ball up, the arm puts the paddle under it; corrections refit the camera
+hw/sim_intrinsics.py  prove the lens calibration in sim: ChArUco views, known 14-term lens, error vs truth
+hw/hover_touch.py   hold the ball still; the paddle comes up flat and touches its bottom (--sim: vs truth)
+hw/handeye.py       camera pose + joint offsets + paddle mount from the paddle STags (--sim: proof vs truth)
+lab/dashboard.py    the lab dashboard (localhost:8800): research, experiments, policies, training, calibration, live sim
+lab/live.py         report a running job (status, frames, curves) to the dashboard
+cad/charuco.py      the 248 x 128 mm ChArUco board for lens calibration, as a two-colour print
+cad/paddle_tags.py  the 150 mm paddle with STag HD21 id 0 / id 1 inlaid in its faces (two-colour print)
+cad/threemf.py      write a multi-part 3MF (one object, a part per filament) from STL meshes
+tests/test_vision.py  the tracker's geometry, detector and filter on synthetic frames
 ```
 
 The vendored model is never edited. Everything this project adds to the world -
