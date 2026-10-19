@@ -1,0 +1,18 @@
+{
+  "shoulder_pan": {
+    "lo": 835,
+    "hi": 3525
+  },
+  "shoulder_lift": {
+    "lo": 641,
+    "hi": 2998
+  },
+  "elbow_flex": {
+    "lo": 1032,
+    "hi": 3238
+  },
+  "wrist_flex": {
+    "lo": 537,
+    "hi": 2583
+  }
+}
