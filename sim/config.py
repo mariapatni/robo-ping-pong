@@ -216,7 +216,8 @@ class MarkerConfig:
     # lands directly in the ball position the policy sees.
     fiducial: bool = True
     hd: int = 21  # 12 markers, maximum error correction; we need four
-    ids: tuple[int, int, int, int] = (0, 1, 2, 3)
+    # 0 and 1 are the paddle's own (sim.paddle.tagged_paddle); 2 and 3 the base tiles.
+    ids: tuple[int, int, int, int] = (4, 5, 6, 7)
     size: float = 0.070  # printed edge length, metres
     texture_px: int = 256
 

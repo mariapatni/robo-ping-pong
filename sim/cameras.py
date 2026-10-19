@@ -281,3 +281,41 @@ def triangulation_sigma(
         return (float("inf"), float(np.sqrt(1.0 / eig.max())) if eig.max() > 0 else float("inf"))
     s = np.sqrt(1.0 / eig)
     return (float(s.max()), float(s.min()))
+
+
+# -- an OpenCV camera, for the calibration and vision tests --------------------
+
+
+def look_at(pos, target, up=WORLD_UP) -> np.ndarray:
+    """World-to-camera rotation, OpenCV convention (x right, y down, z
+    forward), for a camera at `pos` looking at `target`, level with `up`."""
+    z = np.asarray(target, float) - np.asarray(pos, float)
+    z /= np.linalg.norm(z)
+    x = np.cross(z, np.asarray(up, float))
+    x /= np.linalg.norm(x)
+    return np.vstack([x, np.cross(z, x), z])
+
+
+def add_cv_camera(spec: mujoco.MjSpec, name: str, K, R, t, size: tuple[int, int]):
+    """A fixed camera that renders exactly the OpenCV pinhole K, [R | t]
+    (p_cam = R p_world + t) at `size` (width, height), no distortion.
+
+    MuJoCo's camera looks down its -z with +y up, so its axes in the world are
+    R's rows with y and z negated. Its `principal_pixel` is an offset from the
+    image centre with the opposite sign to OpenCV's, and its pixel centres sit
+    at +0.5 where OpenCV's are whole numbers (hw/sim_intrinsics.py, which
+    measured both)."""
+    K, R, t = (np.asarray(a, float) for a in (K, R, t))
+    w, h = size
+    rot = np.column_stack([R[0], -R[1], -R[2]])
+    quat = np.zeros(4)
+    mujoco.mju_mat2Quat(quat, np.ascontiguousarray(rot.reshape(-1)))
+    c = spec.worldbody.add_camera()
+    c.name = name
+    c.pos = (-R.T @ t).tolist()
+    c.quat = quat.tolist()
+    c.resolution = [int(w), int(h)]
+    c.focal_pixel = [float(K[0, 0]), float(K[1, 1])]
+    c.principal_pixel = [w / 2 - (K[0, 2] + 0.5), h / 2 - (K[1, 2] + 0.5)]
+    c.sensor_size = [w * 1e-5, h * 1e-5]
+    return c
