@@ -1,0 +1,15 @@
+{
+  "cols": 8,
+  "rows": 4,
+  "square_mm": 30.0,
+  "marker_mm": 22.0,
+  "dictionary": "DICT_5X5_100",
+  "plate_mm": [
+    248.0,
+    128.0,
+    3.0
+  ],
+  "black_depth_mm": 0.6,
+  "relief_mm": 0.08,
+  "print": "pattern face down on textured PEI; measure 7 squares in x and y after printing"
+}
