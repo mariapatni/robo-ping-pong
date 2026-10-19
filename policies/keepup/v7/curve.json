@@ -1,0 +1,73 @@
+{
+ "episodes": 8,
+ "episode_s": 30.0,
+ "seed": 10000,
+ "points": [
+  {
+   "steps": 40000000,
+   "median_s": 29.988,
+   "mean_s": 20.942875,
+   "mean_bounces": 48.625
+  },
+  {
+   "steps": 42009728,
+   "median_s": 21.395500000000002,
+   "mean_s": 17.845312500000002,
+   "mean_bounces": 42.375
+  },
+  {
+   "steps": 44009728,
+   "median_s": 28.418,
+   "mean_s": 21.354375,
+   "mean_bounces": 50.5
+  },
+  {
+   "steps": 46009728,
+   "median_s": 29.988,
+   "mean_s": 18.930875,
+   "mean_bounces": 44.5
+  },
+  {
+   "steps": 48009728,
+   "median_s": 29.988,
+   "mean_s": 18.878875,
+   "mean_bounces": 43.875
+  },
+  {
+   "steps": 50009728,
+   "median_s": 17.568,
+   "mean_s": 15.818375,
+   "mean_bounces": 36.375
+  },
+  {
+   "steps": 52009728,
+   "median_s": 29.99275,
+   "mean_s": 22.582875,
+   "mean_bounces": 53.5
+  },
+  {
+   "steps": 54009728,
+   "median_s": 29.99275,
+   "mean_s": 22.582875,
+   "mean_bounces": 53.0
+  },
+  {
+   "steps": 56009728,
+   "median_s": 29.988,
+   "mean_s": 18.938875,
+   "mean_bounces": 43.125
+  },
+  {
+   "steps": 58009728,
+   "median_s": 29.874000000000002,
+   "mean_s": 18.850875000000002,
+   "mean_bounces": 42.25
+  },
+  {
+   "steps": 60009728,
+   "median_s": 0.8932500000000001,
+   "mean_s": 10.463625,
+   "mean_bounces": 24.125
+  }
+ ]
+}

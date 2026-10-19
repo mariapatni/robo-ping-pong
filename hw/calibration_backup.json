@@ -1,0 +1,7 @@
+{
+  "shoulder_pan": {"offset": -2023, "min": 816, "max": 3398, "p_gain": 16},
+  "shoulder_lift": {"offset": -895, "min": 629, "max": 3032, "p_gain": 16},
+  "elbow_flex": {"offset": 991, "min": 1038, "max": 3242, "p_gain": 16},
+  "wrist_flex": {"offset": -648, "min": 537, "max": 2905, "p_gain": 16},
+  "wrist_roll": {"offset": 1038, "min": 0, "max": 4095, "p_gain": 16}
+}

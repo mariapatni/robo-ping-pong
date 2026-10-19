@@ -65,6 +65,8 @@ GRIPPER_BODIES = ("moving_jaw_so101_v1", "camera_mount")
 GRIPPER_ACTUATOR = "gripper"
 
 MESH_PATH = Path(__file__).resolve().parent / "models" / "paddle" / "paddle.stl"
+TAGGED_DIR = Path(__file__).resolve().parent / "models" / "paddle_tags"
+TAG_SITE = "paddle_tag{}"  # one per marker, at its centre: x right, y up, z outward
 
 # sim.arm.HOME is not safe with a paddle on: it was chosen for a bare tip. This
 # pose puts the face at (0.244, -0.014, 0.120) - the middle of the strike band,
@@ -72,6 +74,31 @@ MESH_PATH = Path(__file__).resolve().parent / "models" / "paddle" / "paddle.stl"
 # of the table. Solved with sim.pose.solve_face_pose. Same joint order as
 # ARM_JOINTS.
 PADDLE_HOME = np.array([0.0, -0.787, 1.372, -0.374, 0.0])
+
+
+@dataclass(frozen=True)
+class Tag:
+    """One STag marker printed into a face, in the paddle frame (metres).
+
+    `right` and `up` are the marker image's x and -row directions as seen from
+    outside the face, so `corners` comes out in the order the STag detector
+    reports them: top-left, top-right, bottom-right, bottom-left of the black
+    square."""
+
+    id: int
+    edge: float
+    centre: tuple[float, float, float]
+    right: tuple[float, float, float]
+    up: tuple[float, float, float]
+
+    @property
+    def outward(self) -> np.ndarray:
+        return np.cross(np.asarray(self.right, float), np.asarray(self.up, float))
+
+    def corners(self) -> np.ndarray:
+        c, r, u = (np.asarray(a, float) for a in (self.centre, self.right, self.up))
+        h = 0.5 * self.edge
+        return np.array([c - h * r + h * u, c + h * r + h * u, c + h * r - h * u, c - h * r - h * u])
 
 
 @dataclass(frozen=True)
@@ -137,10 +164,18 @@ class PaddleConfig:
     friction: tuple[float, float, float] = (0.9, 0.005, 0.0001)
     priority: int = 2
 
-    # Painted matt black, all over. The rubber is a hair lighter only so the
-    # face can be told from the back in a render.
-    rgba: tuple[float, float, float, float] = (0.02, 0.02, 0.02, 1.0)
-    face_rgba: tuple[float, float, float, float] = (0.05, 0.05, 0.05, 1.0)
+    # Blue. It printed white and was then coloured blue, so a white ball stands
+    # out against it - white on white was the hardest case for the camera.
+    # The face is a shade darker only so it can be told from the back in a
+    # render. Matters for vision, not for the policy, which never sees colour.
+    rgba: tuple[float, float, float, float] = (0.12, 0.32, 0.78, 1.0)
+    face_rgba: tuple[float, float, float, float] = (0.09, 0.26, 0.66, 1.0)
+
+    # -- the tagged paddle (`tagged_paddle`) ---------------------------------
+    # Visual meshes, (STL path, rgba), drawn instead of the plain paddle mesh,
+    # and the markers printed into them. Empty for the plain paddle.
+    meshes: tuple[tuple[str, tuple[float, float, float, float]], ...] = ()
+    tags: tuple[Tag, ...] = ()
 
     # -- derived -------------------------------------------------------------
 
@@ -244,6 +279,45 @@ class PaddleConfig:
         return np.array([self.blade_centre_x, 0.0, -self.rubber_thickness])
 
 
+# -- the tagged paddle --------------------------------------------------------
+
+# Bare PLA, no rubber: the faces carry the markers. Numbers from
+# cad/paddle_tags.py (cad/out/paddle_tags.json) and the mass properties of its
+# two printed parts together; tests/test_paddle.py re-derives both.
+TAGGED_MASS = 0.070388
+TAGGED_COM = (0.078343, -0.000015, 0.001796)
+TAGGED_INERTIA = (9.609503e-05, 1.100296e-04, 2.054480e-04, -4.820142e-08, 1.559786e-06, 6.883107e-09)
+TAG_HD = 21
+
+
+def tagged_paddle(**overrides) -> PaddleConfig:
+    """The 150 mm, 3.0 mm paddle with STag HD21 id 0 (94 mm) inlaid in the
+    hitting face and id 1 (88 mm) in the back - what cad/paddle_tags.py prints.
+
+    Drawn from the two print meshes themselves, black body and white inlays,
+    so a camera in the sim sees the marker exactly as printed, mirroring and
+    all. The hitting face is z = 0 with no rubber, so `face_pos` is on it."""
+    cx, thick = 0.081, 0.003
+    # Each marker's white stands proud of the black: 0.08 mm on the hitting
+    # face, 0.1 mm on the back (cad/paddle_tags.py RELIEF).
+    tags = (
+        Tag(0, 0.094, (cx, 0.0, -0.00008), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)),
+        Tag(1, 0.088, (cx, 0.0, thick + 0.0001), (0.0, -1.0, 0.0), (1.0, 0.0, 0.0)),
+    )
+    kw = dict(
+        blade_diameter=0.150, blade_thickness=thick, blade_centre_x=cx,
+        rubber_thickness=0.0, rubber_radius=0.0, rubber_mass=0.0,
+        plastic_mass=TAGGED_MASS, plastic_com=TAGGED_COM, plastic_inertia=TAGGED_INERTIA,
+        # Bare PLA bounces less and grips less than the rubber (see `restitution`).
+        restitution=0.60, friction=(0.35, 0.005, 0.0001),
+        meshes=((str(TAGGED_DIR / "black.stl"), (0.05, 0.05, 0.05, 1.0)),
+                (str(TAGGED_DIR / "white.stl"), (0.95, 0.95, 0.95, 1.0))),
+        tags=tags,
+    )
+    kw.update(overrides)
+    return PaddleConfig(**kw)
+
+
 # -- the mesh -----------------------------------------------------------------
 
 
@@ -283,13 +357,16 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
     # The mesh is an asset, not a body, so two arms share one copy. Adding it
     # again under a second prefix is a duplicate-name error, and duplicating
     # the geometry would be wasteful anyway.
-    if not any(m.name == PADDLE_MESH for m in spec.meshes):
-        verts, faces = read_stl()
-        mesh = spec.add_mesh()
-        mesh.name = PADDLE_MESH
-        mesh.uservert = verts.reshape(-1).tolist()
-        mesh.userface = faces.reshape(-1).tolist()
-        mesh.scale = [1e-3, 1e-3, 1e-3]  # the CAD is in millimetres
+    visuals = [(PADDLE_MESH, MESH_PATH, cfg.rgba)] if not cfg.meshes else [
+        (f"{PADDLE_MESH}_{Path(path).stem}", Path(path), rgba) for path, rgba in cfg.meshes]
+    for name, path, _ in visuals:
+        if not any(m.name == name for m in spec.meshes):
+            verts, faces = read_stl(path)
+            mesh = spec.add_mesh()
+            mesh.name = name
+            mesh.uservert = verts.reshape(-1).tolist()
+            mesh.userface = faces.reshape(-1).tolist()
+            mesh.scale = [1e-3, 1e-3, 1e-3]  # the CAD is in millimetres
 
     # `prefix` lets a second arm, attached under its own prefix, carry its own
     # paddle: MjSpec.attach renames every body, so the host and the paddle's
@@ -302,29 +379,31 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
     body.ipos = cfg.com.tolist()
     body.fullinertia = list(cfg.fullinertia)
 
-    body.add_geom(
-        name=prefix + f"{PADDLE_BODY}_visual",
-        type=mujoco.mjtGeom.mjGEOM_MESH,
-        meshname=PADDLE_MESH,
-        mass=0.0,  # the body's explicit inertial owns all of it
-        contype=0,
-        conaffinity=0,
-        group=2,
-        rgba=list(cfg.rgba),
-    )
+    for k, (name, _, rgba) in enumerate(visuals):
+        body.add_geom(
+            name=prefix + f"{PADDLE_BODY}_visual" + (f"_{k}" if k else ""),
+            type=mujoco.mjtGeom.mjGEOM_MESH,
+            meshname=name,
+            mass=0.0,  # the body's explicit inertial owns all of it
+            contype=0,
+            conaffinity=0,
+            group=2,
+            rgba=list(rgba),
+        )
 
     # The rubber, drawn only. Its mass is already in the body's inertial.
-    body.add_geom(
-        name=prefix + f"{PADDLE_BODY}_rubber",
-        type=mujoco.mjtGeom.mjGEOM_CYLINDER,
-        pos=[cfg.blade_centre_x, 0.0, -0.5 * cfg.rubber_thickness],
-        size=[cfg.rubber_radius, 0.5 * cfg.rubber_thickness, 0.0],
-        mass=0.0,
-        contype=0,
-        conaffinity=0,
-        group=2,
-        rgba=list(cfg.face_rgba),
-    )
+    if cfg.rubber_thickness > 0.0:
+        body.add_geom(
+            name=prefix + f"{PADDLE_BODY}_rubber",
+            type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+            pos=[cfg.blade_centre_x, 0.0, -0.5 * cfg.rubber_thickness],
+            size=[cfg.rubber_radius, 0.5 * cfg.rubber_thickness, 0.0],
+            mass=0.0,
+            contype=0,
+            conaffinity=0,
+            group=2,
+            rgba=list(cfg.face_rgba),
+        )
 
     half = 0.5 * (cfg.blade_thickness + cfg.rubber_thickness)
     body.add_geom(
@@ -373,6 +452,14 @@ def add_paddle(spec: mujoco.MjSpec, cfg: PaddleConfig | None = None,
         quat=[0.0, 1.0, 0.0, 0.0],
         group=3,
     )
+
+    # A site per marker, at its centre, so the truth a camera calibration is
+    # scored against is read straight off the model.
+    for tag in cfg.tags:
+        q = np.zeros(4)
+        rot = np.column_stack([tag.right, tag.up, tag.outward]).astype(float)
+        mujoco.mju_mat2Quat(q, rot.reshape(9))
+        body.add_site(name=prefix + TAG_SITE.format(tag.id), pos=list(tag.centre), quat=q.tolist(), group=3)
 
     return spec
 

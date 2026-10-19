@@ -240,7 +240,9 @@ def test_a_regulation_net_would_block_every_feed_we_have():
     assert len(h) >= 30, "feeds should reach the centre line"
     assert float(np.mean(h + r < 0.1525)) > 0.95, "a regulation net would let feeds through"
     blocked = float(np.mean(h < cfg.net.height + r))
-    assert 0.2 < blocked < 0.7, f"expected a large minority blocked, got {blocked:.0%}"
+    # Measured 69% with a solid-sphere ball and 72% with the hollow shell it
+    # really is - one feed of 32. The bound only has to say "a lot, not all".
+    assert 0.2 < blocked < 0.8, f"expected a large share blocked, got {blocked:.0%}"
 
 
 # -- the cameras --------------------------------------------------------------

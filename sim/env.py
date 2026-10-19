@@ -7,11 +7,13 @@ joint targets of `sim.arm` remain the only way to command anything.
 
 from __future__ import annotations
 
+import math
+
 import mujoco
 import numpy as np
 
 from .arm import SCENE, Arm
-from .ball import BALL_BODY, Launch, add_ball, drag_force, sample_launch
+from .ball import BALL_BODY, Launch, add_ball, sample_launch
 from .cameras import add_cameras
 from .config import EnvConfig
 from .table import add_corner_markers, add_net, add_table
@@ -81,16 +83,23 @@ class PingPongEnv(Arm):
 
         Drag depends on the current velocity, so it cannot be set once and left:
         `xfrc_applied` persists across steps and would otherwise be a stale
-        force. Written as a whole-slice assignment of a pure function's result
-        so the MJX version is the same line with `.at[].set()`.
+        force.
+
+        This is `sim.ball.drag_force` written out on plain floats. The loop runs
+        ~2,000 times per simulated second, and the numpy version spent more time
+        allocating three-element arrays than MuJoCo spent stepping; this one
+        roughly halves the cost of a training step. `drag_force` stays the
+        reference, and the MJX port should start from it.
         """
         k = self.cfg.ball.drag_k
-        body = self.ball_body
+        m, d = self.model, self.data
+        force = d.xfrc_applied[self.ball_body]  # a view: writes land in MjData
+        qvel, a = d.qvel, self.ball_dof_adr
         for _ in range(n):
-            self.data.xfrc_applied[body, :3] = drag_force(
-                self.data.qvel[self.ball_dof_adr : self.ball_dof_adr + 3], k
-            )
-            mujoco.mj_step(self.model, self.data)
+            vx, vy, vz = qvel[a : a + 3].tolist()
+            s = -k * math.sqrt(vx * vx + vy * vy + vz * vz)
+            force[:3] = (s * vx, s * vy, s * vz)
+            mujoco.mj_step(m, d)
 
     def reset(self, q=None) -> None:
         super().reset(q)

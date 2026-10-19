@@ -266,12 +266,14 @@ def build() -> Part:
         part = part - bore(y, z, HORN_HOLE_DIA)
     part = part - bore(0.0, AXIS_Z, HORN_CENTRE_DIA)
 
-    # The rubber's trim line and glue relief, cut into the hitting face.
+    # The rubber's trim line and glue relief, cut into the hitting face. None
+    # when there is no rubber (cad/paddle_tags.py: the face carries a marker).
     r_out = BLADE_R - GROOVE_INSET
-    groove = extrude(
-        Pos(BLADE_CX, 0) * (Circle(r_out) - Circle(r_out - GROOVE_WIDTH)), amount=GROOVE_DEPTH
-    )
-    part = part - groove
+    if GROOVE_DEPTH > 0.0:
+        groove = extrude(
+            Pos(BLADE_CX, 0) * (Circle(r_out) - Circle(r_out - GROOVE_WIDTH)), amount=GROOVE_DEPTH
+        )
+        part = part - groove
 
     if RUBBER_RECESS > 0.0:
         part = part - extrude(

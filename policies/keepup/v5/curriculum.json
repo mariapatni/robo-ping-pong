@@ -1,0 +1,39 @@
+{
+  "stage": 5,
+  "stages": 5,
+  "spawn_scale": 0.5,
+  "spawn_scale_prev": 0.4,
+  "bar_bounces": 12.0,
+  "history": [
+    {
+      "stage": 0,
+      "spawn_scale": 0.0,
+      "timesteps": 0
+    },
+    {
+      "stage": 1,
+      "spawn_scale": 0.1,
+      "timesteps": 1785856
+    },
+    {
+      "stage": 2,
+      "spawn_scale": 0.2,
+      "timesteps": 1810432
+    },
+    {
+      "stage": 3,
+      "spawn_scale": 0.3,
+      "timesteps": 1851392
+    },
+    {
+      "stage": 4,
+      "spawn_scale": 0.4,
+      "timesteps": 1900544
+    },
+    {
+      "stage": 5,
+      "spawn_scale": 0.5,
+      "timesteps": 2088960
+    }
+  ]
+}

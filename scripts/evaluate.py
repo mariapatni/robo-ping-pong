@@ -27,7 +27,8 @@ from sim.env import PingPongEnv  # noqa: E402
 from sim.feed import _closest, _fly, aim_feed, sample_targets  # noqa: E402
 from sim.oracle import plan_return, plan_within_reach  # noqa: E402
 from sim.paddle import PADDLE_BODY, PaddleConfig  # noqa: E402
-from sim.pose import solve_face_pose_ik, windup_pose  # noqa: E402
+from sim.pose import solve_face_pose_ik  # noqa: E402
+from sim.swing import SWING_TIME, plan_swing  # noqa: E402
 from sim.reward import exchange_reward  # noqa: E402
 from sim.safety import TableGuard  # noqa: E402
 from sim.zones import grid, sweep_face, zones  # noqa: E402
@@ -35,7 +36,6 @@ from sim.zones import grid, sweep_face, zones  # noqa: E402
 CFG = EnvConfig(paddle=PaddleConfig())
 T = CFG.table
 R = CFG.paddle.blade_diameter / 2
-SWING = 0.34
 
 
 def classify(rec):
@@ -82,8 +82,8 @@ def run_episode(world, guard, s, l, i, planner):
                            CFG.paddle.restitution, seed=i)
         hit = solve_face_pose_ik(world, s, plan.normal, seed=i, guard=guard)
 
-    wind = solve_face_pose_ik(world, windup_pose(s, plan.normal, blade_radius=R),
-                              plan.normal, seed=i, guard=guard)
+    swing = plan_swing(world, guard, s, plan.normal, plan.paddle_speed,
+                       blade_radius=R, seed=i)
 
     m, d = world.model, world.data
     bid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, PADDLE_BODY)
@@ -95,8 +95,8 @@ def run_episode(world, guard, s, l, i, planner):
     qa, va = int(m.jnt_qposadr[jid]), int(m.jnt_dofadr[jid])
 
     mujoco.mj_resetData(m, d)
-    d.qpos[world.qpos_adr] = wind.qpos
-    guard.command(wind.qpos)
+    d.qpos[world.qpos_adr] = swing.wind.qpos
+    guard.command(swing.wind.qpos)
     d.qpos[qa:qa + 3] = feed.pos
     d.qpos[qa + 3:qa + 7] = (1, 0, 0, 0)
     d.qvel[va:va + 6] = 0.0
@@ -104,13 +104,11 @@ def run_episode(world, guard, s, l, i, planner):
     mujoco.mj_forward(m, d)
 
     dt = m.opt.timestep
-    start = max(0.0, feed.flight - SWING)
     cn = fn = vo = land = None
     prev_z, pen = 1.0, 0.0
     for k in range(int((feed.flight + 1.0) / dt)):
         t = k * dt
-        a = 0.0 if t < start else min(1.0, (t - start) / SWING)
-        guard.command(wind.qpos + (hit.qpos - wind.qpos) * a)
+        guard.command(swing.command_at(t, feed.flight))
         d.xfrc_applied[bb, :3] = drag_force(d.qvel[va:va + 3], CFG.ball.drag_k)
         mujoco.mj_step(m, d)
         for c in range(d.ncon):

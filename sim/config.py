@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 
 import numpy as np
 
@@ -124,9 +125,12 @@ class BallConfig:
     def area(self) -> float:
         return float(np.pi * self.radius**2)
 
-    @property
+    @cached_property
     def drag_k(self) -> float:
-        """Precomputed 0.5*rho*Cd*A so the step loop is one multiply."""
+        """Precomputed 0.5*rho*Cd*A so the step loop is one multiply.
+
+        Cached: the step loop reads it ~2,000 times a simulated second, and as a
+        plain property it recomputed the area every time."""
         return 0.5 * self.air_density * self.drag_coefficient * self.area
 
     @property
@@ -212,7 +216,8 @@ class MarkerConfig:
     # lands directly in the ball position the policy sees.
     fiducial: bool = True
     hd: int = 21  # 12 markers, maximum error correction; we need four
-    ids: tuple[int, int, int, int] = (0, 1, 2, 3)
+    # 0 and 1 are the paddle's own (sim.paddle.tagged_paddle); 2 and 3 the base tiles.
+    ids: tuple[int, int, int, int] = (4, 5, 6, 7)
     size: float = 0.070  # printed edge length, metres
     texture_px: int = 256
 

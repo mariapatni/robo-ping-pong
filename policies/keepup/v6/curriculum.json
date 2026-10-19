@@ -1,0 +1,14 @@
+{
+  "stage": 5,
+  "stages": 5,
+  "spawn_scale": 0.5,
+  "spawn_scale_prev": 0.4,
+  "bar_bounces": 12.0,
+  "history": [
+    {
+      "stage": 5,
+      "spawn_scale": 0.5,
+      "timesteps": 20004864
+    }
+  ]
+}

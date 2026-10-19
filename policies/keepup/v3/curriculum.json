@@ -1,0 +1,29 @@
+{
+  "stage": 6,
+  "stages": 9,
+  "spawn_scale": 0.6,
+  "spawn_scale_prev": 0.5,
+  "bar_bounces": 12.0,
+  "history": [
+    {
+      "stage": 3,
+      "spawn_scale": 0.3,
+      "timesteps": 2000000
+    },
+    {
+      "stage": 4,
+      "spawn_scale": 0.4,
+      "timesteps": 2049152
+    },
+    {
+      "stage": 5,
+      "spawn_scale": 0.5,
+      "timesteps": 2106496
+    },
+    {
+      "stage": 6,
+      "spawn_scale": 0.6,
+      "timesteps": 4162688
+    }
+  ]
+}

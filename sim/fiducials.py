@@ -14,9 +14,16 @@ is from that file. The port is validated the only way that means anything:
 `tests/test_fiducials.py` renders each marker and feeds it to the real STag
 detector, which must recover the right id.
 
-The morphological dilate/erode/smooth passes of the original are skipped; they
-are edge cosmetics, and supersampling gives cleaner antialiasing. The detector
-round-trip is what proves that is safe.
+The original's morphological passes are ported too, and they are not
+cosmetic: the black code circles, the filler circles bridging them and the
+white circles for clear bits overlap, and drawn one over another they leave
+slivers - thin black crescents inside a white bit, flecks of black between
+blobs. The reference then runs five rounds of a majority vote over a disc of
+12 px (in its 1000 px image) that turns those into the smooth connected blobs
+every published STag has, and redraws the code circles on top so each bit is
+an exact circle again. Its final 3x3 edge smoothing is left to the
+supersampled render's own antialiasing. The detector round-trip still proves
+the result reads.
 """
 
 from __future__ import annotations
@@ -35,6 +42,13 @@ CODE_R = 0.062482177287080  # relative to the inner circle diameter
 FILLER_R = 0.7  # relative to CODE_R
 
 LIBRARY_DIR = Path(__file__).resolve().parent / "models" / "stag"
+
+# The reference generator's morphology (Form1.cs drawMarkers): in its 1000 px
+# image, five rounds of dilate-then-erode, each a majority vote over a disc of
+# radius 12 px.
+REF_SIZE = 1000
+MORPH_RADIUS = 12
+MORPH_ROUNDS = 5
 
 # The 12 bit positions of one quadrant, as (radius, angle) in the inner circle.
 _QUADRANT = (
@@ -129,6 +143,15 @@ def marker(marker_id: int, hd: int = 21, size: int = 512, supersample: int = 4) 
     for j in np.flatnonzero(bits == 0):
         disc(px[j, 0], px[j, 1], code_d, 255)
 
+    img = _majority_rounds(img, s, outer_d)
+
+    # Redraw the code circles over the cleaned blobs, black then white, so
+    # every bit is an exact circle again.
+    for j in np.flatnonzero(bits == 1):
+        disc(px[j, 0], px[j, 1], code_d, 0)
+    for j in np.flatnonzero(bits == 0):
+        disc(px[j, 0], px[j, 1], code_d, 255)
+
     # Force the annulus between the inner and outer circle white: it is the
     # circular border the detector refines its homography against.
     yy, xx = np.mgrid[0:s, 0:s]
@@ -136,3 +159,33 @@ def marker(marker_id: int, hd: int = 21, size: int = 512, supersample: int = 4) 
     img[(r <= outer_d / 2) & (r >= inner_d / 2)] = 255
 
     return cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
+
+
+def _majority_rounds(img: np.ndarray, s: int, outer_d: float) -> np.ndarray:
+    """Form1.cs dilateBitmap / erodeBitmap, MORPH_ROUNDS times. Dilate: a
+    pixel that is not black turns black if more than half its disc is not
+    white. Erode: a black pixel turns white if more than half its disc is not
+    black. Only inside the outer circle's bounding square, as there. Done on
+    the binary image (the reference draws the code circles unantialiased for
+    this step), with the disc scaled to this image's size."""
+    import cv2
+
+    r = max(1, int(round(MORPH_RADIUS * s / REF_SIZE)))
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    disc = ((xx * xx + yy * yy) <= r * r).astype(np.float32)
+    disc[r, r] = 0.0  # the reference's mask leaves out the centre
+    half = disc.sum() / 2.0
+    lo = int((s - outer_d) / 2)
+    region = np.zeros((s, s), bool)
+    region[lo:s - lo, lo:s - lo] = True
+
+    black = img < 128
+    for _ in range(MORPH_ROUNDS):
+        n_black = cv2.filter2D(black.astype(np.float32), -1, disc, borderType=cv2.BORDER_CONSTANT)
+        black = black | (region & (n_black > half))
+        n_white = cv2.filter2D((~black).astype(np.float32), -1, disc, borderType=cv2.BORDER_CONSTANT)
+        black = black & ~(region & (n_white > half))
+    out = img.copy()
+    out[black] = 0
+    out[~black & region] = 255
+    return out
