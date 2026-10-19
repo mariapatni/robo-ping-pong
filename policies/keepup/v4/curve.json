@@ -1,0 +1,37 @@
+{
+ "episodes": 8,
+ "episode_s": 30.0,
+ "seed": 10000,
+ "points": [
+  {
+   "steps": 22000000,
+   "median_s": 18.1845,
+   "mean_s": 16.5786875,
+   "mean_bounces": 46.25
+  },
+  {
+   "steps": 24000000,
+   "median_s": 23.604,
+   "mean_s": 18.113875,
+   "mean_bounces": 47.5
+  },
+  {
+   "steps": 26000000,
+   "median_s": 29.9925,
+   "mean_s": 20.29325,
+   "mean_bounces": 52.625
+  },
+  {
+   "steps": 28000000,
+   "median_s": 29.9925,
+   "mean_s": 22.672062500000003,
+   "mean_bounces": 58.25
+  },
+  {
+   "steps": 30000000,
+   "median_s": 24.842,
+   "mean_s": 18.2393125,
+   "mean_bounces": 46.75
+  }
+ ]
+}

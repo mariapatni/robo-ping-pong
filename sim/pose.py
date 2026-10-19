@@ -326,3 +326,37 @@ def safe_windup(
         if clear >= margin:
             return sol
     return best[1]
+
+
+def swing_through(strike, face_normal, paddle_speed: float, swing_time: float = 0.34,
+                  min_follow: float = 0.015, max_follow: float = 0.090):
+    """Where the paddle should be heading, past the ball rather than at it.
+
+    A swing that ends at the contact point is decelerating when it arrives.
+    Measured: the paddle delivered 0.14 m/s where the plan asked for 0.70, and
+    was at a third of its own peak speed at the moment it struck. Four fifths
+    of the intended energy was simply not there, which is what puts 37% of
+    returns back on the arm's own half.
+
+    So the target is placed BEYOND the strike point along the hitting
+    direction, and the swing is timed to pass THROUGH the strike point rather
+    than stop on it - which is what a follow-through is for in any racket
+    sport. You accelerate through the ball, not to it.
+
+    The distance is proportional to the speed wanted, because not every stroke
+    should follow through the same amount: a gentle block needs almost none,
+    and giving it a long one overshoots the ball and puts the paddle somewhere
+    useless for the next exchange. `min_follow` keeps a short stroke honest and
+    `max_follow` keeps a hard one inside the arm's reach.
+
+    Returns (through_point, fraction), where `fraction` is how far along the
+    wind-up-to-through path the strike point sits. The caller times its ramp so
+    that fraction of it elapses at contact.
+    """
+    strike = np.asarray(strike, float)
+    n = np.asarray(face_normal, float)
+    n = n / max(np.linalg.norm(n), 1e-9)
+
+    # Travel beyond contact, scaled by how hard this stroke is meant to be.
+    follow = float(np.clip(paddle_speed * swing_time * 0.6, min_follow, max_follow))
+    return strike + follow * n, follow

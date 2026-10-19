@@ -1,0 +1,9 @@
+{
+  "steps": 8000000.0,
+  "envs": 8,
+  "seed": 0,
+  "run": "v4",
+  "randomize": true,
+  "resume": 22000000,
+  "start_stage": 5
+}
