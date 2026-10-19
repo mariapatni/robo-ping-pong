@@ -1,0 +1,167 @@
+[
+ {
+  "id": "keepup-v1-v7",
+  "date": "2026-10-12",
+  "status": "success",
+  "area": "Policy",
+  "title": "Keep-up policy, seven versions",
+  "summary": "Train a policy to catch a dropped ball and keep it bouncing over the paddle centre. v3 onward reach the 60 s limit in 43-70% of randomised drops.",
+  "links": [
+   {
+    "tab": "policies"
+   }
+  ],
+  "media": [
+   "out/keepup_v5.mp4"
+  ]
+ },
+ {
+  "id": "hand-calibration",
+  "date": "2026-10-18",
+  "status": "success",
+  "area": "Hardware",
+  "title": "Hand calibration of the real arm",
+  "summary": "Each joint swept by hand to its limits; centres and limits written to hw/calibration.json. The rest pose matches the sim. (Automatic rehoming had failed: the old calibration was ~1 rad off at the shoulder.)",
+  "media": [
+   "out/hw/unfolded.jpg"
+  ]
+ },
+ {
+  "id": "joint-step",
+  "date": "2026-10-18",
+  "status": "success",
+  "area": "Hardware",
+  "title": "Joint step test",
+  "summary": "Each joint stepped by 0.1 and 0.25 rad: rise time, peak speed, overshoot and settling error measured on the ~13 V supply.",
+  "media": [
+   "out/hw/joint_test_20261018_145813/report.txt"
+  ]
+ },
+ {
+  "id": "mirror",
+  "date": "2026-10-18",
+  "status": "partial",
+  "area": "Hardware",
+  "title": "Mirror sim episodes on the real arm",
+  "summary": "v6 and v7 played at 0.25x to 1x. The arm follows, 0.1-0.27 s behind and 1-11 degrees off typically, up to 30 degrees at the elbow.",
+  "media": [
+   "out/hw/mirror_20261018_145428/mirror.mp4",
+   "out/hw/mirror_20261018_144838/mirror.mp4"
+  ]
+ },
+ {
+  "id": "tracker",
+  "date": "2026-10-18",
+  "status": "partial",
+  "area": "Vision",
+  "title": "Webcam ball tracker",
+  "summary": "Detection, depth from the ball's size, a Kalman filter under gravity with bounces. It tracks, but the camera calibration put 3D errors at 3-36 cm.",
+  "media": [
+   "out/hw/track_20261018_165456/track.mp4"
+  ]
+ },
+ {
+  "id": "lighting",
+  "date": "2026-10-18",
+  "status": "partial",
+  "area": "Vision",
+  "title": "Lighting study",
+  "summary": "White ball: 15-57% kept under relit conditions - fragile. Orange ball: found in all 10 conditions. Switched to orange.",
+  "media": [
+   "out/hw/lighting/20261018_164540/sheet.jpg"
+  ]
+ },
+ {
+  "id": "paddle-camera-cal",
+  "date": "2026-10-18",
+  "status": "failed",
+  "area": "Calibration",
+  "title": "Camera calibration from the blue paddle",
+  "summary": "Fitted focal length and pose from paddle sightings. It fixed a real 17-degree elbow offset, but the lens fit ranged 53-104 degrees and 3D errors stayed at 3-36 cm. Replaced by the ChArUco + STag plan.",
+  "media": [
+   "out/hw/cam_calibration/check.jpg"
+  ]
+ },
+ {
+  "id": "hold-the-ball",
+  "date": "2026-10-18",
+  "status": "failed",
+  "area": "Calibration",
+  "title": "Hold-the-ball interactive session",
+  "summary": "You held the ball; the arm put the paddle under it; your corrections were meant to refit the camera. Too few, too noisy corrections to pin the lens: abandoned for STag markers.",
+  "media": [
+   "out/hw/session_173528_small.mp4",
+   "out/hw/ball_point/20261018_174228/00_under.jpg"
+  ]
+ },
+ {
+  "id": "lens-proof",
+  "date": "2026-10-18",
+  "status": "partial",
+  "area": "Calibration",
+  "title": "Lens calibration proof in sim (ChArUco, 14 coefficients)",
+  "summary": "Fit 0.06-0.08 px (same on held-out views), focal length within 0.1%, centre within 1-2 px. 3D 0.75-0.86 mm without distortion, but 1.4-2.3 mm with the strong 14-coefficient test lens: not yet sub-millimetre there.",
+  "links": [
+   {
+    "tab": "calibration"
+   }
+  ],
+  "media": [
+   "out/hw/sim_intrinsics/20261018_193128/views.jpg"
+  ]
+ },
+ {
+  "id": "tagged-paddle-sim",
+  "date": "2026-10-19",
+  "status": "success",
+  "area": "Sim",
+  "title": "Tagged paddle in the sim",
+  "summary": "The sim draws the two print meshes, so the camera sees the marker as printed. Both ids read, corners within 0.2 px of the kinematics.",
+  "media": []
+ },
+ {
+  "id": "hover-touch-sim",
+  "date": "2026-10-19",
+  "status": "success",
+  "area": "Calibration",
+  "title": "Hover-the-ball touch test (sim)",
+  "summary": "20 of 20 spots: the face comes up flat under the camera's estimate and touches the ball's bottom. Sideways RMS 1.6 mm (worst 2.7), height RMS 0.3 mm. Uses the true camera pose so far.",
+  "links": [
+   {
+    "tab": "calibration"
+   }
+  ],
+  "media": []
+ },
+ {
+  "id": "handeye-sim",
+  "date": "2026-10-19",
+  "status": "success",
+  "area": "Calibration",
+  "title": "Hand-eye calibration proof (sim)",
+  "summary": "8 of 8 random set-ups pass with a 17-degree elbow error, a 2 mm/2-degree mount error and a slightly wrong lens: camera within 0.75 mm, joint offsets within 0.06 degrees, paddle face within 0.2 mm.",
+  "links": [
+   {
+    "tab": "calibration"
+   }
+  ],
+  "media": []
+ },
+ {
+  "id": "prints",
+  "date": "2026-10-19",
+  "status": "success",
+  "area": "Fabrication",
+  "title": "Print files: tagged paddle and ChArUco board",
+  "summary": "cad/out/paddle_tags.3mf and cad/out/charuco_board.3mf, two-colour, each colour its own part and its own surface. Markers fixed on 19 Oct (clean-up passes).",
+  "links": [
+   {
+    "tab": "calibration"
+   }
+  ],
+  "media": [
+   "cad/out/paddle_tags_faces.png",
+   "cad/out/charuco_board.png"
+  ]
+ }
+]

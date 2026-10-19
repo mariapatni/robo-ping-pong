@@ -1,0 +1,184 @@
+[
+ {
+  "id": "control-rate",
+  "date": "2026-10-12",
+  "area": "Policy",
+  "title": "Control at 30 Hz, not 50",
+  "question": "How fast can the policy act on the real arm?",
+  "conclusion": "30 Hz. The servo bus is half-duplex serial shared by five servos on a non-realtime OS, and 30 Hz is what it sustains. At 1.8 m/s the ball moves 60 mm between decisions, against a 35 mm usable blade radius, so training randomises the rate over 30-60 Hz rather than assuming one.",
+  "evidence": [
+   "sim/arm.py (CONTROL_HZ)"
+  ]
+ },
+ {
+  "id": "per-bounce-reward",
+  "date": "2026-10-12",
+  "area": "Policy",
+  "title": "Paying per bounce teaches a dribble",
+  "question": "Why did v1 score 63 bounces yet look wrong?",
+  "conclusion": "A reward per bounce is maximised by tiny, fast bounces (an 8 cm dribble). From v3 on the reward is seconds of good flight, with an apex band of 20-35 cm.",
+  "evidence": [
+   "out/keepup_v1.mp4",
+   "out/keepup_v3.mp4"
+  ]
+ },
+ {
+  "id": "rate-specialist",
+  "date": "2026-10-13",
+  "area": "Policy",
+  "title": "A policy trained at one rate fails at another",
+  "question": "Does a 60 Hz policy work at 30 Hz?",
+  "conclusion": "No: v2 made 58.6 bounces at 60 Hz and 5.6 at 30 Hz. The control period is now an input and is randomised in training.",
+  "evidence": [
+   "out/keepup_v2.mp4"
+  ]
+ },
+ {
+  "id": "best-version",
+  "date": "2026-10-18",
+  "area": "Policy",
+  "title": "v3-v6 are within noise of each other; v5 leads",
+  "question": "Which version is best, under identical conditions?",
+  "conclusion": "Fresh evaluation, 30 randomised drops each, held-out seed, 60 s limit: v5 kept 70% up for the full minute, v3/v4/v6 57%, v7 43% (its last checkpoint landed on a dip). Where the ball is dropped matters most: within 12 cm of the centre about 60% reach the limit, 20-40 cm out none do.",
+  "evidence": [
+   "out/eval_versions/v5.txt",
+   "out/eval_versions/v7.txt"
+  ]
+ },
+ {
+  "id": "weak-arm",
+  "date": "2026-10-18",
+  "area": "Hardware",
+  "title": "The 'weak, jammed' arm was a 5 V supply",
+  "question": "Why could the shoulder not lift the arm?",
+  "conclusion": "The STS3215s are the 12 V version and were on 5 V. On the ~13 V supply the lift moves at 3-13% load.",
+  "evidence": [
+   "out/hw/joint_test_20261018_145813/report.txt"
+  ]
+ },
+ {
+  "id": "sim-real-lag",
+  "date": "2026-10-18",
+  "area": "Hardware",
+  "title": "The real servos lag the sim's by 0.1-0.27 s",
+  "question": "How closely does the real arm follow a sim episode?",
+  "conclusion": "At real time, typical errors are 1-11 degrees and 0.07-0.27 s behind, worst at the elbow and base. Peak load stays near 25%, so the limit is servo response, not torque. A policy trained on the sim arm expects a much faster arm; the actuator model needs the measured response.",
+  "evidence": [
+   "out/hw/mirror_20261018_145428/mirror.mp4",
+   "out/hw/mirror_20261018_145428/report.txt"
+  ]
+ },
+ {
+  "id": "focal-ambiguity",
+  "date": "2026-10-18",
+  "area": "Calibration",
+  "title": "One camera cannot fit its lens and its pose together",
+  "question": "Why did the blue-paddle camera calibration give 3-36 cm errors?",
+  "conclusion": "Fitting focal length and camera pose from the same sightings is ill-conditioned: fits ranged 53-104 degrees of field of view. So the lens is now measured separately (ChArUco board), and the pose from STag markers on the paddle.",
+  "evidence": [
+   "out/hw/cam_calibration/check.jpg",
+   "out/hw/ball_point/20261018_174228/00_under.jpg"
+  ]
+ },
+ {
+  "id": "white-vs-orange",
+  "date": "2026-10-18",
+  "area": "Vision",
+  "title": "A white ball is fragile under changing light; orange is not",
+  "question": "How does the detector hold up under relit conditions?",
+  "conclusion": "The white ball was found in only 15-57% of frames under re-lit conditions (backlit, warm, dim). The orange-ball detector, using vividness after white balance, finds it in all 10 conditions and ignores the same-hue wooden table.",
+  "evidence": [
+   "hw/lighting_study.py"
+  ]
+ },
+ {
+  "id": "sphere-off-axis",
+  "date": "2026-10-19",
+  "area": "Vision",
+  "title": "Off-centre, a ball looks up to 5% bigger",
+  "question": "Why was the ball's depth 10-20 mm off in the sim?",
+  "conclusion": "Away from the image centre a sphere images as an ellipse, stretched and shifted outward. The old on-axis formula took that as the ball being nearer. CameraModel now inverts the exact outline (a conic), which brought the ball position to about 1 mm.",
+  "evidence": [
+   "hw/vision.py (sphere_image)"
+  ]
+ },
+ {
+  "id": "radius-bias",
+  "date": "2026-10-19",
+  "area": "Vision",
+  "title": "The detector reads the outline ~0.3 px small",
+  "question": "What is left after the exact sphere model?",
+  "conclusion": "A constant ~0.3 px under-read of the radius, from mixed pixels at the edge: 1% of the radius, 5 mm of depth at half a metre. It is calibrated out from the ball resting on the table, where its centre is exactly 20 mm up and the camera ray alone fixes its distance.",
+  "evidence": [
+   "hw/hover_touch.py (calibrate_radius)"
+  ]
+ },
+ {
+  "id": "lens-degeneracy",
+  "date": "2026-10-18",
+  "area": "Calibration",
+  "title": "A free 14-coefficient lens fit trades the image centre for prism and tilt",
+  "question": "Why did the sim lens fit put the image centre 25-74 px off?",
+  "conclusion": "The thin-prism and sensor-tilt terms can stand in for a shifted centre, so a free fit drifts even when started at the truth. Fitting in stages (5, then 8 coefficients, then 12 and 14 with the centre held) brings it within 1-2 px, with sub-pixel fits throughout.",
+  "evidence": [
+   "out/hw/sim_intrinsics/20261018_193128/report.txt",
+   "out/hw/sim_intrinsics/20261018_193128/views.jpg"
+  ]
+ },
+ {
+  "id": "mujoco-principal",
+  "date": "2026-10-18",
+  "area": "Sim",
+  "title": "MuJoCo's principal point has the opposite sign to OpenCV's",
+  "question": "How do we render exactly an OpenCV camera in MuJoCo?",
+  "conclusion": "principal_pixel is an offset from the image centre with the opposite sign to OpenCV's, and MuJoCo pixel centres sit at +0.5. With that, a render matches an OpenCV projection to 0.04 px. sim.cameras.add_cv_camera does it.",
+  "evidence": [
+   "sim/cameras.py (add_cv_camera)"
+  ]
+ },
+ {
+  "id": "handeye-observability",
+  "date": "2026-10-19",
+  "area": "Calibration",
+  "title": "What the hand-eye fit cannot tell apart",
+  "question": "Which arm errors can the paddle markers measure?",
+  "conclusion": "Everything except two, and neither changes where the paddle ends up: a shoulder-pan offset is indistinguishable from the camera turning about the base, and the paddle turned on the wrist about the roll axis is a wrist-roll offset. A marker on the base (id 2) would pin the first.",
+  "evidence": [
+   "hw/handeye.py"
+  ]
+ },
+ {
+  "id": "stag-morphology",
+  "date": "2026-10-19",
+  "area": "Fabrication",
+  "title": "STag markers need the reference generator's clean-up passes",
+  "question": "Why did the printed markers have slivers?",
+  "conclusion": "Drawing the code, filler and blank circles over one another leaves thin crescents and flecks; the reference generator removes them with five majority-vote passes and redraws the circles. The port now includes them. A marker that decodes is not necessarily a correct marker.",
+  "evidence": [
+   "sim/fiducials.py"
+  ]
+ },
+ {
+  "id": "bed-relief",
+  "date": "2026-10-19",
+  "area": "Fabrication",
+  "title": "A colour step on the bed face must stay under half a layer",
+  "question": "How can each colour be its own surface without spoiling a face-down print?",
+  "conclusion": "On the face against the bed, a step deeper than half the first layer (0.1 mm of 0.2) leaves the recessed colour printing over air. 0.08 mm there, 0.1 mm on faces that print upward.",
+  "evidence": [
+   "cad/paddle_tags.py",
+   "cad/charuco.py"
+  ]
+ },
+ {
+  "id": "back-marker-edge",
+  "date": "2026-10-19",
+  "area": "Calibration",
+  "title": "The back marker's edge can merge with the connector",
+  "question": "Why do ~1 in 30 calibration views read a corner wrong?",
+  "conclusion": "Seen at an angle, the back marker's black edge runs into the black connector and its shadow; and a marker cut off by the frame still decodes with its lost corners guessed. Both are rejected: no corner within 12 px of the frame edge, and views worse than 3x the median are dropped before a refit.",
+  "evidence": [
+   "hw/handeye.py (gate)"
+  ]
+ }
+]

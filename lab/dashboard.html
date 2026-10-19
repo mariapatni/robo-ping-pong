@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ping-Pong Lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f5f6f3; --panel:#fff; --fg:#1d2226; --muted:#5b646b; --line:#d9ddd6;
+  --accent:#b8602a; --accent-soft:#f3e3d6; --good:#2f7a4a; --warn:#a8711a; --bad:#b03a32; --code-bg:#eceee9;
+  --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Source Serif 4",Georgia,serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --s1:"#b8602a"; color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#15191c; --panel:#1c2125; --fg:#e4e7e3; --muted:#9aa3a8; --line:#2f363b;
+  --accent:#e08a50; --accent-soft:#3a2a1f; --good:#6cc28c; --warn:#e0b050; --bad:#ec7a70; --code-bg:#22282c; color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15191c; --panel:#1c2125; --fg:#e4e7e3; --muted:#9aa3a8; --line:#2f363b;
+  --accent:#e08a50; --accent-soft:#3a2a1f; --good:#6cc28c; --warn:#e0b050; --bad:#ec7a70; --code-bg:#22282c; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15.5px;line-height:1.55}
+a{color:var(--accent)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+header.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.bar{max-width:1400px;margin:0 auto;padding:10px 16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.01em;white-space:nowrap}
+.brand small{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400;margin-left:8px}
+nav{display:flex;gap:2px;flex-wrap:wrap}
+nav a{font-family:var(--display);font-weight:600;font-size:16px;color:var(--muted);text-decoration:none;padding:6px 11px;border-radius:6px}
+nav a.on{color:var(--fg);background:var(--panel);box-shadow:inset 0 -2px 0 var(--accent)}
+nav a .n{font-family:var(--mono);font-size:11px;color:var(--accent);margin-left:4px}
+main{max-width:1400px;margin:0 auto;padding:20px 16px 60px;display:flex;flex-direction:column;gap:26px}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.15}
+h1{font-size:30px} h2{font-size:23px} h3{font-size:18px}
+.sub{color:var(--muted);max-width:75ch;margin:4px 0 0}
+section{display:flex;flex-direction:column;gap:12px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr))}
+.grid.wide{grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card h3{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.meta{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.st-success,.st-done,.st-pass{color:var(--good);border-color:var(--good)}
+.st-partial,.st-stale{color:var(--warn);border-color:var(--warn)}
+.st-failed,.st-fail{color:var(--bad);border-color:var(--bad)}
+.st-running{color:#fff;background:var(--accent);border-color:var(--accent)}
+.chips{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.chip .k{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.chip .v{font-family:var(--display);font-size:24px;font-weight:600}
+.chip .d{font-size:13.5px;color:var(--muted)}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+button,.btn{font-family:var(--display);font-weight:600;font-size:14.5px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.on,button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+input[type=number]{width:96px;font-family:var(--mono);font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg)}
+.md p{margin:0 0 6px} .md ul{margin:0 0 6px;padding-left:20px} .md h4{font-family:var(--display);font-size:15px;margin:8px 0 2px}
+.media{display:flex;gap:8px;flex-wrap:wrap}
+.media img,.media video{max-width:100%;border-radius:6px;border:1px solid var(--line);background:#000}
+.thumb{width:200px;max-width:100%;aspect-ratio:4/3;object-fit:cover;cursor:zoom-in}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--code-bg);white-space:nowrap}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.sel td{background:var(--accent-soft)}
+tr.click{cursor:pointer}
+.meter{height:8px;background:var(--code-bg);border-radius:4px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13.5px}
+.kv dt{font-family:var(--mono);font-size:11.5px;color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+pre{margin:0;background:var(--code-bg);border-radius:6px;padding:10px 12px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.5;max-height:340px}
+.live-view{width:100%;aspect-ratio:16/9;object-fit:contain;background:#0d1012;border-radius:6px;border:1px solid var(--line)}
+.compare{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr))}
+.compare video{width:100%;border-radius:6px;background:#000}
+.chart{position:relative;height:260px}
+.empty{color:var(--muted);font-style:italic}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+dialog{border:1px solid var(--line);border-radius:10px;padding:0;background:var(--panel);color:var(--fg);max-width:min(96vw,1300px)}
+dialog img,dialog video{display:block;max-width:min(96vw,1300px);max-height:88vh}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.note{font-size:13.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top"><div class="bar">
+  <div class="brand">Ping-Pong Lab<small>SO-101 · localhost</small></div>
+  <nav id="nav"></nav>
+  <span class="spacer"></span>
+  <span class="meta" id="clock"></span>
+</div></header>
+<main id="main"></main>
+<dialog id="dlg" onclick="this.close()"></dialog>
+
+<script>
+const TABS = [["overview","Overview"],["research","Research"],["experiments","Experiments"],["policies","Policies"],
+              ["training","Training"],["calibration","Calibration"],["live","Live sim"]];
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const api = p => fetch(p).then(r => r.json());
+const fmt = (x, d=1) => x == null || Number.isNaN(x) ? "–" : Number(x).toFixed(d);
+const pct = x => x == null ? "–" : Math.round(100 * x) + "%";
+const ago = t => { const s = Date.now()/1000 - t; return s < 90 ? `${Math.round(s)} s ago` : s < 5400 ? `${Math.round(s/60)} min ago` : s < 172800 ? `${Math.round(s/3600)} h ago` : `${Math.round(s/86400)} d ago`; };
+const isFile = p => /^(out|cad\/out|policies\/keepup|lab\/content)\//.test(p) && /\.\w+$/.test(p);
+const fileUrl = p => "/files/" + p.split("/").map(encodeURIComponent).join("/");
+function inline(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`(.+?)`/g,"<code>$1</code>"); }
+function md(text){
+  const out = []; let list = null;
+  for (const raw of String(text||"").split("\n")){
+    const l = raw.trimEnd();
+    if (/^\s*-\s+/.test(l)){ if(!list){list=[];} list.push(`<li>${inline(l.replace(/^\s*-\s+/,""))}</li>`); continue; }
+    if (list){ out.push(`<ul>${list.join("")}</ul>`); list=null; }
+    if (/^#{1,4}\s/.test(l)) out.push(`<h4>${inline(l.replace(/^#+\s/,""))}</h4>`);
+    else if (l.trim()) out.push(`<p>${inline(l)}</p>`);
+  }
+  if (list) out.push(`<ul>${list.join("")}</ul>`);
+  return `<div class="md">${out.join("")}</div>`;
+}
+function mediaHTML(paths){
+  return `<div class="media">${(paths||[]).map(p => {
+    if (/\.mp4$/.test(p)) return `<video class="thumb" src="${fileUrl(p)}" preload="metadata" muted onclick="event.stopPropagation(); zoom('${esc(p)}')"></video>`;
+    if (/\.(png|jpe?g)$/i.test(p)) return `<img class="thumb" loading="lazy" src="${fileUrl(p)}" alt="${esc(p)}" onclick="zoom('${esc(p)}')">`;
+    return `<a href="${fileUrl(p)}" target="_blank" class="mono">${esc(p)}</a>`;
+  }).join("")}</div>`;
+}
+function evidence(list){
+  return (list||[]).map(p => isFile(p) ? (/\.(png|jpe?g|mp4)$/i.test(p) ? mediaHTML([p]) : `<a class="mono" target="_blank" href="${fileUrl(p)}">${esc(p)}</a>`) : `<code>${esc(p)}</code>`).join(" ");
+}
+function zoom(p){
+  const d = $("#dlg");
+  d.innerHTML = /\.mp4$/.test(p) ? `<video src="${fileUrl(p)}" controls autoplay onclick="event.stopPropagation()"></video>` : `<img src="${fileUrl(p)}" alt="">`;
+  d.showModal();
+}
+const charts = {};
+function chart(id, cfg){
+  if (charts[id]) charts[id].destroy();
+  const c = document.getElementById(id); if (!c || !window.Chart) return;
+  const css = getComputedStyle(document.documentElement);
+  Chart.defaults.color = css.getPropertyValue("--muted").trim();
+  Chart.defaults.borderColor = css.getPropertyValue("--line").trim();
+  Chart.defaults.font.family = "JetBrains Mono, monospace"; Chart.defaults.font.size = 11;
+  charts[id] = new Chart(c, cfg);
+}
+const PALETTE = ["#b8602a","#2f7a9a","#2f7a4a","#8a4fa8","#a8711a","#b03a32","#5b646b","#1f9e89","#d4a017"];
+
+async function launch(exp, args){
+  const r = await fetch("/api/launch", {method:"POST", body: JSON.stringify({experiment: exp, args})}).then(r => r.json());
+  if (r.error) alert(r.error); else { location.hash = "#live"; }
+}
+async function stopRun(id){
+  if (!confirm("Stop this run?")) return;
+  await fetch("/api/stop", {method:"POST", body: JSON.stringify({id})});
+  render();
+}
+
+// ---------------------------------------------------------------- pages
+const PAGES = {};
+
+PAGES.overview = async () => {
+  const o = await api("/api/overview");
+  const he = o.handeye_latest, hv = o.hover_latest;
+  return `
+  <section><h1>Overview</h1><p class="sub">Everything researched, tried, trained, calibrated and running for the SO-101 ping-pong arm. Every page reads straight from the repository, so new results appear on reload.</p></section>
+  <div class="chips">
+    <div class="chip"><div class="k">Running now</div><div class="v">${o.counts.live}</div><div class="d"><a href="#live">Live sim →</a></div></div>
+    <div class="chip"><div class="k">Best policy</div><div class="v">${o.best_policy ? esc(o.best_policy.name) + " · " + pct(o.best_policy.reached_60) : "–"}</div><div class="d">of drops kept up for 60 s</div></div>
+    <div class="chip"><div class="k">Hand-eye proof (latest)</div><div class="v">${he ? (he.r.passed ? "pass" : "fail") + " · " + fmt(he.r.camera_position_err_mm,2) + " mm" : "–"}</div><div class="d">camera position vs truth</div></div>
+    <div class="chip"><div class="k">Hover touch (latest)</div><div class="v">${hv ? hv.summary.passed + "/" + hv.summary.spots + " · " + fmt(hv.summary.sideways_rms_mm,1) + " mm" : "–"}</div><div class="d">sideways RMS, sim</div></div>
+    <div class="chip"><div class="k">Notebook</div><div class="v">${o.counts.research} · ${o.counts.experiments}</div><div class="d">conclusions · experiments</div></div>
+  </div>
+  <section><h2>Running now</h2>${o.running.length ? `<div class="grid wide">${o.running.map(runCard).join("")}</div>` : `<p class="empty">Nothing running. Start a sim experiment from <a href="#live">Live sim</a>.</p>`}</section>
+  <section><h2>Latest conclusions</h2><div class="grid">${o.research.map(researchCard).join("")}</div></section>
+  <section><h2>Recent experiments</h2><div class="grid">${o.experiments.map(expCard).join("")}</div></section>
+  ${o.recent.length ? `<section><h2>Recently finished runs</h2><div class="grid wide">${o.recent.map(runCard).join("")}</div></section>` : ""}`;
+};
+
+function researchCard(r){
+  return `<div class="card"><h3>${esc(r.title)}</h3>
+    <div class="row"><span class="tag">${esc(r.area)}</span><span class="meta">${esc(r.date)}</span></div>
+    ${r.question ? `<div class="note"><b>Question.</b> ${inline(r.question)}</div>` : ""}
+    <div>${inline(r.conclusion)}</div>
+    ${r.evidence && r.evidence.length ? `<div class="meta">Evidence: ${evidence(r.evidence)}</div>` : ""}</div>`;
+}
+function expCard(e){
+  return `<div class="card"><h3>${esc(e.title)}</h3>
+    <div class="row"><span class="tag st-${esc(e.status)}">${esc(e.status)}</span><span class="tag">${esc(e.area)}</span><span class="meta">${esc(e.date)}</span></div>
+    <div>${inline(e.summary)}</div>
+    ${mediaHTML(e.media)}
+    ${(e.links||[]).map(l => `<a href="#${l.tab}">Open ${esc(l.tab)} →</a>`).join(" ")}</div>`;
+}
+
+let researchArea = "all";
+PAGES.research = async () => {
+  const R = await api("/api/research");
+  const areas = ["all", ...new Set(R.map(r => r.area))];
+  const shown = R.filter(r => researchArea === "all" || r.area === researchArea).sort((a,b) => b.date.localeCompare(a.date));
+  return `<section><h1>Research &amp; conclusions</h1><p class="sub">Questions asked along the way, and what the evidence said. Edited in <code>lab/content/research.json</code>.</p>
+    <div class="filters">${areas.map(a => `<button class="${a===researchArea?"on":""}" onclick="researchArea='${esc(a)}';render()">${esc(a)}</button>`).join("")}</div></section>
+    <div class="grid">${shown.map(researchCard).join("")}</div>`;
+};
+
+let expStatus = "all";
+PAGES.experiments = async () => {
+  const E = await api("/api/experiments");
+  const sts = ["all","success","partial","failed"];
+  const shown = E.filter(e => expStatus === "all" || e.status === expStatus).sort((a,b) => b.date.localeCompare(a.date));
+  const n = s => E.filter(e => e.status === s).length;
+  return `<section><h1>Experiments</h1><p class="sub">What was tried, and whether it worked. ${n("success")} succeeded, ${n("partial")} partly, ${n("failed")} failed. Edited in <code>lab/content/experiments.json</code>.</p>
+    <div class="filters">${sts.map(s => `<button class="${s===expStatus?"on":""}" onclick="expStatus='${s}';render()">${s}</button>`).join("")}</div></section>
+    <div class="grid">${shown.map(expCard).join("")}</div>`;
+};
+
+// policies
+let compareSel = new Set();
+PAGES.policies = async () => {
+  const P = await api("/api/policies");
+  window._P = P;
+  const evald = P.filter(p => p.eval);
+  setTimeout(() => {
+    chart("polbar", {type:"bar", data:{labels: evald.map(p => p.name), datasets:[
+      {label:"kept up 60 s (%)", data: evald.map(p => 100*p.eval.reached_60), backgroundColor:"#b8602a"},
+      {label:"median rally (s)", data: evald.map(p => p.eval.median_s), backgroundColor:"#2f7a9a"}]},
+      options:{maintainAspectRatio:false, plugins:{legend:{position:"bottom"}}}});
+  });
+  return `<section><h1>Policies</h1><p class="sub">Every keep-up version, how it differs from the one before, and how it scores: 30 randomised drops each, held-out seed, 60 s limit. Tick versions to watch them side by side. Notes live in <code>policies/keepup/vN/NOTES.md</code>.</p>
+    <div class="card"><h3>Scores</h3><div class="chart"><canvas id="polbar"></canvas></div><p class="note">v1 and v2 no longer run: they take 24 inputs and the environment now gives 33.</p></div>
+    <div class="row"><b>Compare:</b> <span class="meta" id="cmpsel">${[...compareSel].join(", ") || "tick two or more versions"}</span>
+      <button class="primary" onclick="showCompare()">Side by side</button>
+      <span class="spacer"></span>
+      <span class="meta">Render a new video:</span> v<input type="number" id="rv" value="5" min="3" max="99"> seed <input type="number" id="rs" value="10000">
+      <button onclick="launch('render_policy',{version:$('#rv').value, seed:$('#rs').value, episodes:2})">Render live</button></div>
+    <div id="compare"></div></section>
+    <div class="grid wide">${P.slice().reverse().map(policyCard).join("")}</div>`;
+};
+function policyCard(p){
+  const e = p.eval;
+  return `<div class="card"><h3><span>${esc(p.name)}</span><span style="font-weight:500">${esc(p.meta.title||"")}</span></h3>
+    <div class="row"><span class="meta">${esc(p.meta.date||"")} · ${esc(p.meta.trained||"")} · ${p.checkpoints} checkpoints</span><span class="spacer"></span>
+      <label class="meta"><input type="checkbox" ${compareSel.has(p.name)?"checked":""} onchange="toggleCmp('${p.name}',this.checked)"> compare</label></div>
+    ${e ? `<div class="kv"><dt>kept up 60 s</dt><dd><div class="meter"><i style="width:${100*e.reached_60}%"></i></div>${pct(e.reached_60)}</dd>
+      <dt>median rally</dt><dd>${fmt(e.median_s)} s</dd><dt>mean bounces</dt><dd>${fmt(e.mean_bounces)}</dd>
+      <dt>endings</dt><dd>${Object.entries(e.causes).map(([k,v]) => `${esc(k)} ${v}`).join(" · ")}</dd></div>` : `<div class="note">No evaluation on record.</div>`}
+    ${md(p.notes)}
+    ${p.videos.length ? `<div class="meta">Videos (click to play):</div>${mediaHTML(p.videos)}` : `<div class="note">No video yet: use “Render live”.</div>`}
+    ${p.eval_text ? `<details><summary class="meta">Full evaluation</summary><pre>${esc(p.eval_text)}</pre></details>` : ""}</div>`;
+}
+function toggleCmp(n, on){ on ? compareSel.add(n) : compareSel.delete(n); $("#cmpsel").textContent = [...compareSel].join(", ") || "tick two or more versions"; }
+function showCompare(){
+  const P = window._P.filter(p => compareSel.has(p.name));
+  if (!P.length) return;
+  $("#compare").innerHTML = `<div class="card"><div class="row"><h3>Side by side</h3><span class="spacer"></span>
+      <button onclick="document.querySelectorAll('#compare video').forEach(v=>{v.currentTime=0;v.play()})">Play all from start</button>
+      <button onclick="document.querySelectorAll('#compare video').forEach(v=>v.pause())">Pause</button></div>
+    <div class="compare">${P.map(p => `<div><div class="meta"><b>${esc(p.name)}</b> ${esc(p.meta.title||"")} · ${p.eval ? pct(p.eval.reached_60)+" kept up 60 s" : ""}</div>
+      ${p.videos.length ? `<select onchange="this.nextElementSibling.src='/files/'+this.value">${p.videos.map(v => `<option value="${esc(v)}">${esc(v.split("/").pop())}</option>`).join("")}</select>
+      <video src="${fileUrl(p.videos[p.videos.length-1])}" controls muted preload="metadata"></video>` : `<p class="empty">no video</p>`}</div>`).join("")}</div></div>`;
+}
+
+// training
+PAGES.training = async () => {
+  const T = await api("/api/training");
+  const withCurve = T.filter(t => t.curve && t.curve.points && t.curve.points.length);
+  const withProg = T.filter(t => t.progress && Object.keys(t.progress).length);
+  setTimeout(() => {
+    if (withCurve.length) chart("perf", {type:"line", data:{datasets: withCurve.map((t,i) => ({label:t.name, data:t.curve.points.map(p => ({x:p.steps/1e6, y:p.median_s})), borderColor:PALETTE[i%9], backgroundColor:PALETTE[i%9], tension:.2}))},
+      options:{maintainAspectRatio:false, parsing:false, scales:{x:{type:"linear", title:{display:true,text:"environment steps (millions)"}}, y:{title:{display:true,text:"median rally (s)"}, min:0}}, plugins:{legend:{position:"bottom"}}}});
+    withProg.forEach(t => {
+      const x = t.progress["time/total_timesteps"] || [];
+      const keys = Object.keys(t.progress).filter(k => k !== "time/total_timesteps");
+      chart("prog_"+t.name, {type:"line", data:{datasets: keys.map((k,i) => ({label:k, data:x.map((s,j) => ({x:s/1e6, y:t.progress[k][j]})).filter(p => p.y != null), borderColor:PALETTE[i%9], pointRadius:0, yAxisID: /loss/.test(k) ? "y" : "y2", hidden: !/(train\/loss|value_loss|ep_rew_mean)/.test(k)}))},
+        options:{maintainAspectRatio:false, parsing:false, scales:{x:{type:"linear", title:{display:true,text:"steps (M)"}}, y:{position:"left", title:{display:true,text:"loss"}}, y2:{position:"right", grid:{drawOnChartArea:false}}}, plugins:{legend:{position:"bottom"}}}});
+    });
+  });
+  return `<section><h1>Training</h1><p class="sub">Every training run. Runs from now on log their losses and rewards to <code>progress.csv</code>. v1–v7 were trained before that, so their loss curves were never recorded. Their performance over training is rebuilt instead by evaluating the saved checkpoints.</p>
+    <div class="card"><div class="row"><h3>Performance over training (from checkpoints)</h3><span class="spacer"></span>
+      <button onclick="launch('policy_curves',{})">Rebuild from checkpoints</button></div>
+      ${withCurve.length ? `<div class="chart" style="height:320px"><canvas id="perf"></canvas></div><p class="note">Each point: one checkpoint, 8 randomised drops of up to 30 s; the median time the ball stayed up.</p>` : `<p class="empty">Not built yet: press “Rebuild from checkpoints”. It runs in the background and shows up under Live sim.</p>`}</div>
+    ${withProg.map(t => `<div class="card"><h3>${esc(t.name)} · loss and reward ${t.live ? '<span class="tag st-running">training</span>' : ""}</h3><div class="chart"><canvas id="prog_${t.name}"></canvas></div></div>`).join("")}</section>
+    <section><h2>Runs</h2><div class="scroll"><table><thead><tr><th>Run</th><th>Steps</th><th>Resumed from</th><th>Randomised</th><th>Episode</th><th>γ</th><th>Curriculum stage</th><th>Logged curves</th></tr></thead><tbody>
+    ${T.map(t => `<tr><td><b>${esc(t.name)}</b></td><td class="num">${t.steps ? fmt(t.steps[1]/1e6,1)+" M" : "–"}</td><td class="num">${t.args.resume ? fmt(t.args.resume/1e6,0)+" M" : "–"}</td>
+      <td>${t.args.randomize ? "yes" : "no"}</td><td class="num">${t.args.episode_s || 20} s</td><td class="num">${t.args.gamma || 0.99}</td><td class="num">${t.curriculum ? t.curriculum.stage + "/" + t.curriculum.stages : "–"}</td>
+      <td>${Object.keys(t.progress||{}).length ? "loss + reward" : t.curve ? "performance" : "none"}</td></tr>`).join("")}</tbody></table></div></section>`;
+};
+
+// calibration
+let heSel = 0;
+PAGES.calibration = async () => {
+  const C = await api("/api/calibration");
+  window._C = C;
+  const he = C.handeye, hv = C.hover;
+  setTimeout(() => { drawHE(); drawHover(); });
+  const ok = b => `<span class="tag st-${b ? "pass" : "fail"}">${b ? "pass" : "fail"}</span>`;
+  return `<section><h1>Calibration</h1><p class="sub">The camera has to place the ball in the robot's own frame. The plan is to measure the lens with a ChArUco board, find where the camera sits from the STag markers on the paddle (hand-eye), then check end to end by touching a hovering ball. Each step is proven in the sim against ground truth before the real arm.</p></section>
+  <section><h2>Print files</h2><div class="grid wide">${C.prints.map(p => `<div class="card"><h3>${esc(p.title)}</h3><a class="mono" href="${fileUrl(p.file)}">${esc(p.file)}</a><div class="note">${esc(p.how)}</div>${mediaHTML(p.images)}</div>`).join("")}</div></section>
+  <section><div class="row"><h2>Hand-eye proof (sim)</h2><span class="spacer"></span>seed <input type="number" id="hes" value="${he.length}"><button onclick="launch('handeye',{seed:$('#hes').value})">Run live</button></div>
+    <p class="sub">Camera pose, joint offsets and paddle mount solved from the STag corners, scored against a truth the fit never sees. Click a row for its per-image errors and views.</p>
+    <div class="scroll"><table><thead><tr><th>Run</th><th>Views</th><th>Dropped</th><th>Camera mm</th><th>Camera °</th><th>Worst offset °</th><th>Fit px</th><th>Held-out px</th><th>Corners 3D mm</th><th>Face max mm</th><th></th></tr></thead><tbody>
+    ${he.map((h,i) => { const r = h.r; const off = Math.max(...Object.values(r.joint_offset_err_deg).map(Math.abs));
+      return `<tr class="click ${i===heSel?"sel":""}" onclick="heSel=${i};render()"><td class="mono">${esc(h.name)}</td><td class="num">${r.views_fit}+${r.views_held}</td><td class="num">${r.views_dropped ?? "–"}</td>
+      <td class="num">${fmt(r.camera_position_err_mm,2)}</td><td class="num">${fmt(r.camera_angle_err_deg,3)}</td><td class="num">${fmt(off,3)}</td><td class="num">${fmt(r.reproj_rms_px,3)}</td>
+      <td class="num">${fmt(r.held_reproj_rms_px,3)}</td><td class="num">${fmt(r.corner_rmse_held_mm,2)}</td><td class="num">${fmt(r.face_max_mm,2)}</td><td>${ok(r.passed)}</td></tr>`; }).join("")}</tbody></table></div>
+    ${he[heSel] ? `<div class="grid wide"><div class="card"><h3>${esc(he[heSel].name)}: fit error per image</h3><div class="chart"><canvas id="heimg"></canvas></div>
+      <div class="kv">${Object.entries(he[heSel].r.joint_offset_true_deg).map(([j,t]) => `<dt>${esc(j)}</dt><dd>true ${fmt(t,3)}°, fit ${fmt(he[heSel].r.joint_offset_fit_deg[j],3)}°</dd>`).join("")}</div></div>
+      <div class="card"><h3>Views</h3><p class="note">Green: the corners STag detected. Magenta: where the fitted camera and arm put them.</p>${mediaHTML(he[heSel].views)}</div></div>` : ""}</section>
+  <section><div class="row"><h2>Hover-the-ball touch test (sim)</h2><span class="spacer"></span><button onclick="launch('hover_touch',{n:20,seed:0})">Run live</button></div>
+    <p class="sub">The paddle comes up flat under where the camera says the ball is and touches its bottom. Sideways: the face centre against the true ball centre. Height: where the camera predicted the touch against where it happened.</p>
+    ${hv.length ? `<div class="grid wide"><div class="card"><h3>${esc(hv[0].name)} · ${hv[0].summary.passed}/${hv[0].summary.spots} pass</h3>
+      <div class="kv"><dt>sideways RMS / worst</dt><dd>${fmt(hv[0].summary.sideways_rms_mm,2)} / ${fmt(hv[0].summary.sideways_max_mm,2)} mm</dd>
+      <dt>height RMS / worst</dt><dd>${fmt(hv[0].summary.height_rms_mm,2)} / ${fmt(hv[0].summary.height_max_mm,2)} mm</dd><dt>tilt worst</dt><dd>${fmt(hv[0].summary.tilt_max_deg,2)}°</dd>
+      <dt>radius_scale</dt><dd>${fmt(hv[0].summary.radius_scale,4)}</dd></div><div class="chart"><canvas id="hvsc"></canvas></div></div>
+      <div class="card"><h3>At the touch</h3>${mediaHTML(hv[0].shots)}</div></div>` : `<p class="empty">No run saved under out/hover_touch yet. Press “Run live”.</p>`}</section>
+  <section><div class="row"><h2>Lens proof (sim, ChArUco)</h2><span class="spacer"></span><button onclick="launch('lens',{seed:0})">Run live</button></div>
+    <div class="grid wide">${C.lens.slice(0,4).map(l => `<div class="card"><h3 class="mono">${esc(l.name)}</h3><pre>${esc(l.report)}</pre>${l.views ? mediaHTML([l.views]) : ""}</div>`).join("")}</div></section>
+  <section><h2>Real camera (current fit)</h2><div class="card">${C.camera.fit ? `<div class="kv"><dt>method</dt><dd>blue-paddle sightings (superseded by the STag plan)</dd><dt>focal</dt><dd>${fmt(C.camera.f,1)} px · ${fmt(C.camera.fit.hfov_deg,1)}° across</dd><dt>fit</dt><dd>${fmt(C.camera.fit.rms_px,1)} px RMS over ${C.camera.fit.points} points</dd><dt>position</dt><dd>${esc(JSON.stringify(C.camera.fit.camera_position_m))} m</dd></div>` : `<p class="empty">none</p>`}</div></section>`;
+};
+function drawHE(){
+  const h = window._C.handeye[heSel]; if (!h) return;
+  const a = h.r.reproj_per_image_px, b = h.r.held_reproj_per_image_px || [];
+  chart("heimg", {type:"bar", data:{labels:[...a.map((_,i)=>"fit "+(i+1)), ...b.map((_,i)=>"held "+(i+1))],
+    datasets:[{label:"RMS corner error (px)", data:[...a, ...b], backgroundColor:[...a.map(()=> "#b8602a"), ...b.map(()=> "#2f7a9a")]}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{title:{display:true,text:"px"}}}}});
+}
+function drawHover(){
+  const h = window._C.hover[0]; if (!h) return;
+  const pts = h.trials.filter(t => t.touched).map(t => ({x: Math.hypot(...t.xy_err_mm), y: t.z_err_mm}));
+  chart("hvsc", {type:"scatter", data:{datasets:[{label:"spots", data:pts, backgroundColor:"#b8602a"}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{title:{display:true,text:"sideways error (mm)"}, min:0}, y:{title:{display:true,text:"height error (mm)"}}}}});
+}
+
+// live
+function runCard(r){
+  const f = r.fields || {};
+  const running = r.state === "running";
+  return `<div class="card" data-run="${esc(r.id)}"><div class="row"><h3>${esc(r.title)}</h3><span class="tag st-${esc(r.state)}">${esc(r.state)}</span><span class="tag">${esc(r.kind)}</span><span class="spacer"></span>
+      ${running ? `<button onclick="stopRun('${esc(r.id)}')">Stop</button>` : ""}</div>
+    <div class="meta">started ${ago(r.started)}${r.ended ? " · ended " + ago(r.ended) : ""} · <code>${esc(r.command)}</code></div>
+    ${r.has_frame ? `<img class="live-view" alt="live view of ${esc(r.title)}" src="${running ? `/live/${esc(r.id)}/stream.mjpg` : `/live/${esc(r.id)}/frame.jpg?${r.heartbeat}`}">` : ""}
+    ${r.description ? `<details ${running ? "open" : ""}><summary class="meta">What this experiment is</summary><div>${inline(r.description)}</div></details>` : ""}
+    ${Object.keys(f).length ? `<div class="kv">${Object.entries(f).map(([k,v]) => `<dt>${esc(k)}</dt><dd>${esc(typeof v === "number" ? (Math.abs(v) < 1e4 ? +v.toFixed(4) : v) : v)}</dd>`).join("")}</div>` : ""}
+    ${r.has_curves ? `<div class="chart" style="height:200px"><canvas id="cv_${esc(r.id)}"></canvas></div>` : ""}
+    ${r.error ? `<div class="note" style="color:var(--bad)">${esc(r.error)}</div>` : ""}
+    ${r.log && r.log.length ? `<details><summary class="meta">Log (${r.log.length})</summary><pre>${esc(r.log.slice(-60).join("\n"))}</pre></details>` : ""}</div>`;
+}
+async function drawRunCurves(runs){
+  for (const r of runs.filter(r => r.has_curves)){
+    const c = await api(`/live/${r.id}/curves.json`);
+    chart("cv_"+r.id, {type:"line", data:{datasets:Object.entries(c).map(([k,v],i) => ({label:k, data:v.map(([x,y])=>({x,y})), borderColor:PALETTE[i%9], backgroundColor:PALETTE[i%9], pointRadius:2}))},
+      options:{maintainAspectRatio:false, parsing:false, animation:false, scales:{x:{type:"linear"}}, plugins:{legend:{position:"bottom"}}}});
+  }
+}
+PAGES.live = async () => {
+  const [runs, reg] = await Promise.all([api("/api/live"), api("/api/registry")]);
+  const running = runs.filter(r => r.state === "running"), past = runs.filter(r => r.state !== "running").slice(0, 12);
+  setTimeout(() => drawRunCurves([...running, ...past]));
+  return `<section><h1>Live sim</h1><p class="sub">Every job that reports through <code>lab.live</code>: what it is, its numbers, and a live view of the sim. Any number of runs at once. Updates every few seconds.</p></section>
+    <section><h2>Running (${running.length})</h2>${running.length ? `<div class="grid wide">${running.map(runCard).join("")}</div>` : `<p class="empty">Nothing running right now.</p>`}</section>
+    <section><h2>Start a sim experiment</h2><div class="grid">${Object.entries(reg).map(([k,e]) => `<div class="card"><h3>${esc(e.title)}</h3><span class="tag">${esc(e.kind)}</span><div class="note">${esc(e.description)}</div>
+      <div class="row">${Object.entries(e.args).map(([a,v]) => `<label class="meta">${esc(a)} <input type="number" data-a="${esc(a)}" value="${v}"></label>`).join("")}
+      <button class="primary" onclick="launch('${k}', Object.fromEntries([...this.parentElement.querySelectorAll('input')].map(i=>[i.dataset.a,i.value])))">Start</button></div></div>`).join("")}</div></section>
+    <section><h2>Finished</h2>${past.length ? `<div class="grid wide">${past.map(runCard).join("")}</div>` : `<p class="empty">None yet.</p>`}</section>`;
+};
+
+// ---------------------------------------------------------------- router
+let current = null, timer = null, lastLiveSig = "";
+async function render(){
+  const tab = (location.hash.slice(1) || "overview");
+  const t = TABS.find(x => x[0] === tab) ? tab : "overview";
+  $("#nav").innerHTML = TABS.map(([k,l]) => `<a href="#${k}" class="${k===t?"on":""}">${l}${k==="live" ? `<span class="n" id="livecount"></span>` : ""}</a>`).join("");
+  const y = t === current ? scrollY : 0;
+  current = t;
+  try { $("#main").innerHTML = await PAGES[t](); } catch(e){ $("#main").innerHTML = `<pre>${esc(e.stack||e)}</pre>`; }
+  scrollTo(0, y);
+}
+async function tick(){
+  $("#clock").textContent = new Date().toLocaleTimeString();
+  try {
+    const runs = await api("/api/live");
+    const n = runs.filter(r => r.state === "running").length;
+    const lc = $("#livecount"); if (lc) lc.textContent = n ? n : "";
+    // Re-render the live and overview pages when a run starts, stops or reports.
+    if (current === "live" || current === "overview"){
+      const sig = runs.map(r => r.id + r.state + JSON.stringify(r.fields) + (r.log||[]).length).join("|");
+      if (sig !== lastLiveSig){ lastLiveSig = sig; if (!document.querySelector("details[open] pre")) refreshRunCards(runs); }
+    }
+  } catch(e){}
+}
+function refreshRunCards(runs){
+  // Swap cards in place, so live video streams keep playing.
+  const have = [...document.querySelectorAll("[data-run]")].map(e => e.dataset.run);
+  const want = runs.map(r => r.id);
+  const changedSet = want.some(id => !have.includes(id)) || runs.some(r => { const el = document.querySelector(`[data-run="${CSS.escape(r.id)}"]`); return el && el.querySelector(".tag").textContent !== r.state; });
+  if (changedSet && (current === "live" || current === "overview")) return render();
+  for (const r of runs){
+    const el = document.querySelector(`[data-run="${CSS.escape(r.id)}"]`); if (!el) continue;
+    const kv = el.querySelector(".kv"); const tmp = document.createElement("div"); tmp.innerHTML = runCard(r);
+    const nkv = tmp.querySelector(".kv"); if (kv && nkv) kv.replaceWith(nkv); else if (!kv && nkv) el.appendChild(nkv);
+  }
+  drawRunCurves(runs.filter(r => r.state === "running"));
+}
+addEventListener("hashchange", render);
+render(); tick(); setInterval(tick, 2500);
+</script>
+</body>
+</html>
