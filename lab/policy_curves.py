@@ -1,13 +1,15 @@
 """Rebuild each keep-up version's performance over training from its checkpoints.
 
-    .venv/bin/python -m lab.policy_curves                    every 2M steps, 8 drops of 30 s
+    .venv/bin/python -m lab.policy_curves                    every 2M steps, 8 drops of up to 120 s
     .venv/bin/python -m lab.policy_curves --runs v5 v6 --every 1000000
 
 v1-v7 were trained without logging, so their loss curves were never written.
 The checkpoints were kept, though (every 0.5M steps): this evaluates them on
 the same held-out drops and writes policies/keepup/<run>/curve.json - median
 and mean time the ball stayed up, against environment steps - which the
-dashboard's Training page plots. Runs whose inputs no longer match the
+dashboard's Training page plots. 120 s drops, because at 30 s most
+checkpoints from 4M steps on lasted the whole drop and the curves were flat.
+Runs whose inputs no longer match the
 environment (v1, v2) are skipped. Progress shows on the dashboard's Live page.
 """
 
@@ -36,7 +38,7 @@ def main(argv=None) -> int:
     p.add_argument("--runs", nargs="*", default=None)
     p.add_argument("--every", type=int, default=2_000_000)
     p.add_argument("--episodes", type=int, default=8)
-    p.add_argument("--episode-s", type=float, default=30.0)
+    p.add_argument("--episode-s", type=float, default=120.0)
     p.add_argument("--seed", type=int, default=10_000)
     a = p.parse_args(argv)
 

@@ -59,7 +59,7 @@ EXPERIMENTS = {
         "kind": "training",
         "description": (
             "v1-v7 were trained without logging, so their loss curves are gone. This evaluates every 2M-step "
-            "checkpoint (8 randomised drops, 30 s each) and records how long the policy kept the ball up: "
+            "checkpoint (8 randomised drops, up to 120 s each) and records how long the policy kept the ball up: "
             "a performance-over-training curve for each version."),
         "args": {"every": 2000000, "episodes": 8},
         "command": lambda a: [PY, "-m", "lab.policy_curves", "--every", str(a["every"]), "--episodes", str(a["episodes"])],
