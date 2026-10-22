@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -60,6 +61,8 @@ def main(argv=None) -> int:
     p.add_argument("--eval-every", type=float, default=2e6, help="steps between keep-the-best evaluations")
     p.add_argument("--eval-episodes", type=int, default=48)
     p.add_argument("--eval-limit-s", type=float, default=300.0, help="time limit of an evaluation episode")
+    p.add_argument("--preview-every", type=float, default=1e6,
+                   help="steps between short sim previews of the current policy on the dashboard (0: none)")
     p.add_argument("--max-stage", type=int, default=9,
                    help="last curriculum stage; past 5 almost nothing is catchable in time")
     args = p.parse_args(argv)
@@ -243,6 +246,101 @@ def main(argv=None) -> int:
             (out / "best.json").write_text(json.dumps({"best_mean_s": self.best, "history": self.history},
                                                       indent=2))
 
+    class Dashboard(BaseCallback):
+        """Report the run to the lab dashboard (lab/dashboard.py, Live page).
+
+        After every update: the losses PPO just trained on, the episode
+        return, length and bounces, the curriculum stage and the keep-the-best
+        evaluations, as numbers and as curves. Every `--preview-every` steps
+        it also plays the current policy for a few seconds in its own
+        environment and streams that, so the card shows what the policy is
+        actually doing now. The losses are read at the start of a rollout:
+        SB3 records them during train() and only writes them at the next
+        log dump, so that is the one moment they are all there.
+        """
+
+        def __init__(self):
+            super().__init__()
+            self.live, self.t0, self.n0, self.last_preview = None, 0.0, 0, -np.inf
+
+        def _on_training_start(self) -> None:
+            from lab.live import Live
+            what = (f"PPO on the keep-up task, run {args.run}: {args.steps / 1e6:g}M steps on {args.envs} envs"
+                    + (f", resumed from {args.resume / 1e6:g}M" if args.resume else "")
+                    + (", randomised world" if args.randomize else "")
+                    + (f", {args.episode_s:g} s episodes" if args.episode_s else "") + f", gamma {args.gamma}."
+                    " Curves: PPO losses, episode return and length, bounces per episode, and the"
+                    " keep-the-best evaluation (mean seconds kept up). The view is a short preview of"
+                    " the current policy, refreshed every " + f"{args.preview_every / 1e6:g}M steps.")
+            self.live = Live(f"train_{args.run}", f"Training keep-up {args.run}", what, kind="training")
+            self.t0, self.n0 = time.time(), self.num_timesteps
+
+        def _on_rollout_start(self) -> None:
+            if self.live is None or self.n_calls == 0:
+                return
+            x = self.num_timesteps / 1e6
+            vals = self.model.logger.name_to_value
+            for key, name in (("train/loss", "loss"), ("train/value_loss", "value loss")):
+                if key in vals:
+                    self.live.point(name, x, vals[key])
+            eps = list(self.model.ep_info_buffer)
+            fields = {}
+            if eps:
+                fields["ep_return"] = round(float(np.mean([e["r"] for e in eps])), 2)
+                fields["ep_seconds"] = round(float(np.mean([e["l"] for e in eps])) / 30.0, 1)
+                self.live.point("episode return", x, fields["ep_return"])
+                self.live.point("episode seconds", x, fields["ep_seconds"])
+                if "bounces" in eps[0]:
+                    fields["bounces"] = round(float(np.mean([e["bounces"] for e in eps])), 1)
+                    self.live.point("bounces", x, fields["bounces"])
+            done = self.num_timesteps - self.n0
+            rate = done / max(1e-6, time.time() - self.t0)
+            target = (args.resume or 0) + args.steps
+            fields.update(steps=f"{self.num_timesteps / 1e6:.2f}M of {target / 1e6:g}M",
+                          steps_per_s=round(rate), eta_min=round((target - self.num_timesteps) / max(rate, 1) / 60, 1))
+            for key in ("train/loss", "train/value_loss", "train/approx_kl", "train/learning_rate"):
+                if key in vals:
+                    fields[key.split("/")[1]] = float(f"{vals[key]:.4g}")
+            if keep_best.history:
+                h = keep_best.history[-1]
+                fields["eval_mean_s"], fields["best_mean_s"] = h["mean_s"], keep_best.best
+                if not self.live._curves.get("eval mean s") or self.live._curves["eval mean s"][-1][0] != h["timesteps"] / 1e6:
+                    self.live.point("eval mean s", h["timesteps"] / 1e6, h["mean_s"])
+            if curriculum is not None:
+                fields["curriculum_stage"] = f"{curriculum.stage}/{curriculum.stages}"
+            self.live.status(**fields)
+            if args.preview_every and self.num_timesteps - self.last_preview >= args.preview_every:
+                self.last_preview = self.num_timesteps
+                self._preview()
+
+        def _preview(self, seconds: float = 8.0) -> None:
+            """A few seconds of the current policy, streamed to the card."""
+            import cv2
+            from sim.keepup import KeepUpConfig, KeepUpEnv
+            over = {} if args.episode_s is None else {"episode_s": args.episode_s}
+            cfg = KeepUpConfig.randomized(**over) if args.randomize else KeepUpConfig(**over)
+            env = KeepUpEnv(cfg, render_size=(640, 480))
+            obs, _ = env.reset(seed=int(self.num_timesteps) % 100_000)
+            for _ in range(int(seconds * 30)):
+                a, _ = self.model.predict(venv.normalize_obs(obs), deterministic=True)
+                obs, _, term, trunc, info = env.step(a)
+                if self.live.due():
+                    img = cv2.cvtColor(env.render(), cv2.COLOR_RGB2BGR)
+                    cv2.putText(img, f"{args.run} @ {self.num_timesteps / 1e6:.2f}M steps   bounces {info['bounces']}",
+                                (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+                    self.live.frame(img)
+                if term or trunc:  # dropped: drop another, so the preview runs its full length
+                    obs, _ = env.reset(seed=int(self.num_timesteps + _) % 100_000)
+            env.close()
+
+        def _on_step(self) -> bool:
+            return True
+
+        def _on_training_end(self) -> None:
+            if self.live is not None:
+                self.live.done(best_mean_s=keep_best.best if keep_best.history else None,
+                               steps=f"{self.num_timesteps / 1e6:.2f}M")
+
     def lr_schedule(start: int):
         """Linear from --lr to --lr-end over THIS run's steps.
 
@@ -281,9 +379,25 @@ def main(argv=None) -> int:
         model.learning_rate = lr_schedule(model.num_timesteps)
         model._setup_lr_schedule()
         print(f"resumed {args.run} from {args.resume:,} steps", flush=True)
-    callbacks = [Bounces(), ckpt, KeepBest()] + ([Curriculum(args.start_stage, args.max_stage)] if args.randomize else [])
-    model.learn(total_timesteps=int(args.steps), callback=callbacks, progress_bar=False,
-                reset_num_timesteps=not args.resume)
+    # Losses and rewards to progress.csv as well as the terminal, for the
+    # dashboard's Training page. A resumed run keeps the earlier file under
+    # its own name; the dashboard joins them.
+    from stable_baselines3.common.logger import configure
+    if (out / "progress.csv").exists():
+        (out / "progress.csv").rename(out / f"progress_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+    model.set_logger(configure(str(out), ["stdout", "csv"]))
+
+    keep_best = KeepBest()
+    curriculum = Curriculum(args.start_stage, args.max_stage) if args.randomize else None
+    dashboard = Dashboard()
+    callbacks = [Bounces(), ckpt, keep_best] + ([curriculum] if curriculum else []) + [dashboard]
+    try:
+        model.learn(total_timesteps=int(args.steps), callback=callbacks, progress_bar=False,
+                    reset_num_timesteps=not args.resume)
+    except BaseException as e:
+        if dashboard.live is not None:
+            dashboard.live.failed(repr(e))
+        raise
 
     model.save(out / "policy")
     venv.save(str(out / "vecnormalize.pkl"))

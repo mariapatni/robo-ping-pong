@@ -89,7 +89,8 @@ def eval_summary(path: Path) -> dict | None:
 
 def progress_csv(path: Path, keep=("time/total_timesteps", "train/loss", "train/value_loss",
                                    "train/policy_gradient_loss", "train/entropy_loss", "train/approx_kl",
-                                   "rollout/ep_rew_mean", "rollout/ep_len_mean", "train/learning_rate")) -> dict:
+                                   "rollout/ep_rew_mean", "rollout/ep_len_mean", "train/learning_rate",
+                                   "keepup/bounces", "keepup/eval_mean_s", "keepup/stage")) -> dict:
     out: dict[str, list] = {k: [] for k in keep}
     try:
         with open(path) as f:
@@ -100,6 +101,22 @@ def progress_csv(path: Path, keep=("time/total_timesteps", "train/loss", "train/
     except Exception:
         return {}
     return {k: v for k, v in out.items() if any(x is not None for x in v)}
+
+
+def progress_runs(d: Path) -> dict:
+    """Every progress*.csv in a run directory (a resumed run leaves one per
+    leg), joined in step order."""
+    parts = [progress_csv(p) for p in sorted(d.glob("progress*.csv"), key=lambda p: p.stat().st_mtime)]
+    parts = [p for p in parts if p.get("time/total_timesteps")]
+    if not parts:
+        return {}
+    keys = set().union(*parts)
+    out = {k: [] for k in keys}
+    for part in sorted(parts, key=lambda p: p["time/total_timesteps"][0] or 0):
+        n = len(part["time/total_timesteps"])
+        for k in keys:
+            out[k] += part.get(k, [None] * n)
+    return out
 
 
 def policies() -> list[dict]:
@@ -126,18 +143,17 @@ def policies() -> list[dict]:
 def training() -> list[dict]:
     base = ROOT / "policies" / "keepup"
     runs = []
-    for d in sorted(base.glob("v*"), key=lambda p: int(re.sub(r"\D", "", p.name) or 0)):
-        if not d.is_dir():
-            continue
+    dirs = [d for d in base.iterdir() if d.is_dir() and ((d / "args.json").exists() or list(d.glob("progress*.csv")))]
+    for d in sorted(dirs, key=lambda p: (not re.fullmatch(r"v\d+", p.name), int(re.sub(r"\D", "", p.name) or 0), p.name)):
         ck = sorted(int(m.group(1)) for p in (d / "ckpt").glob("keepup_*_steps.zip")
                     if (m := re.search(r"keepup_(\d+)_steps", p.name))) if (d / "ckpt").exists() else []
         runs.append({
             "name": d.name, "args": read_json(d / "args.json", {}),
             "steps": [ck[0], ck[-1]] if ck else None,
-            "progress": progress_csv(d / "progress.csv") if (d / "progress.csv").exists() else {},
+            "progress": progress_runs(d),
             "curve": read_json(d / "curve.json"), "best": read_json(d / "best.json"),
             "curriculum": read_json(d / "curriculum.json"),
-            "live": (d / "progress.csv").exists() and time.time() - (d / "progress.csv").stat().st_mtime < 120,
+            "live": (d / "progress.csv").exists() and time.time() - (d / "progress.csv").stat().st_mtime < 300,
         })
     return runs
 
